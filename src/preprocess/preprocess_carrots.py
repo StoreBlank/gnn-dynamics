@@ -38,6 +38,7 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
         actions = np.load(os.path.join(data_dir, f"episode_{epi_idx}/actions.npy"))
         steps = np.load(os.path.join(data_dir, f"episode_{epi_idx}/steps.npy"))
         steps_a = np.concatenate([[2], steps], axis=0) # the first two frames are for canonicalization and initialization
+        # print(f"steps_a: {steps_a}")
         if len(actions) != len(steps):
             raise ValueError("The length of actions and steps are not equal.")
         
@@ -59,67 +60,73 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
         frame_idxs = []
         # get start-end pairs
         cnt = 0
-        for fj in range(num_frames):
+        for fj in range(2, num_frames):
             curr_step = None
             for si in range(len(steps_a) - 1):
-                if fj >= steps_a[si] and fj < steps_a[si + 1]:
+                """
+                steps_a[si]: start frame of the push
+                steps_a[si + 1] - 2: end frame of the push
+                steps_a[si + 1] - 1: the final render for the push (not consider as a push)
+                steps_a[si + 1]: the start frame of the next push
+                """
+                if fj >= steps_a[si] and fj <= steps_a[si + 1] - 2:
                     curr_step = si
                     break
-                else:
-                    continue # final render does not include the pushing frames
+            else:
+                continue
             assert curr_step is not None
         
-        curr_frame = fj
-        start_frame = steps_a[curr_step]
-        end_frame = steps_a[curr_step + 1] - 2
-        
-        # search backward (n_his)
-        eef_particles_curr = np.load(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/{curr_frame}_endeffector.npy"))
-        frame_traj = [curr_frame]
-        fi = fj
-        while fi >= start_frame:
-            eef_particles_fi = np.load(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/{fi}_endeffector.npy"))
-            x_curr, z_curr = eef_particles_curr[0], eef_particles_curr[1]
-            x_fi, z_fi = eef_particles_fi[0], eef_particles_fi[1]
-            dist_curr = np.sqrt((x_curr - x_fi) ** 2 + (z_curr - z_fi) ** 2)
-            if dist_curr >= dist_thresh:
-                frame_traj.append(fi)
-                eef_particles_curr = eef_particles_fi
-            fi -= 1
-            if len(frame_traj) == n_his:
-                break
-        else: 
-            # pad to n_his
-            frame_traj = frame_traj + [frame_traj[-1]] * (n_his - len(frame_traj))
-        
-        # search forward (n_future)
-        eef_particles_curr = np.load(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/{curr_frame}_endeffector.npy"))
-        frame_traj = frame_traj[::-1]
-        fi = fj
-        while fi <= end_frame:
-            eef_particles_fi = np.load(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/{fi}_endeffector.npy"))
-            x_curr, z_curr = eef_particles_curr[0], eef_particles_curr[1]
-            x_fi, z_fi = eef_particles_fi[0], eef_particles_fi[1]
-            dist_curr = np.sqrt((x_curr - x_fi) ** 2 + (z_curr - z_fi) ** 2)
-            if dist_curr >= dist_thresh or (fi == end_frame and dist_curr >= 0.75 * dist_thresh):
-                frame_traj.append(fi)
-                eef_particles_curr = eef_particles_fi
-            fi += 1
-            if len(frame_traj) == n_his + n_future:
+            curr_frame = fj
+            start_frame = steps_a[curr_step]
+            end_frame = steps_a[curr_step + 1] - 2
+            
+            # search backward (n_his)
+            eef_particles_curr = np.load(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/{curr_frame}_endeffector.npy"))
+            frame_traj = [curr_frame]
+            fi = fj
+            while fi >= start_frame:
+                eef_particles_fi = np.load(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/{fi}_endeffector.npy"))
+                x_curr, z_curr = eef_particles_curr[0], eef_particles_curr[1]
+                x_fi, z_fi = eef_particles_fi[0], eef_particles_fi[1]
+                dist_curr = np.sqrt((x_curr - x_fi) ** 2 + (z_curr - z_fi) ** 2)
+                if dist_curr >= dist_thresh:
+                    frame_traj.append(fi)
+                    eef_particles_curr = eef_particles_fi
+                fi -= 1
+                if len(frame_traj) == n_his:
+                    break
+            else: 
+                # pad to n_his
+                frame_traj = frame_traj + [frame_traj[-1]] * (n_his - len(frame_traj))
+            
+            # search forward (n_future)
+            eef_particles_curr = np.load(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/{curr_frame}_endeffector.npy"))
+            frame_traj = frame_traj[::-1]
+            fi = fj
+            while fi <= end_frame:
+                eef_particles_fi = np.load(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/{fi}_endeffector.npy"))
+                x_curr, z_curr = eef_particles_curr[0], eef_particles_curr[1]
+                x_fi, z_fi = eef_particles_fi[0], eef_particles_fi[1]
+                dist_curr = np.sqrt((x_curr - x_fi) ** 2 + (z_curr - z_fi) ** 2)
+                if dist_curr >= dist_thresh or (fi == end_frame and dist_curr >= 0.75 * dist_thresh):
+                    frame_traj.append(fi)
+                    eef_particles_curr = eef_particles_fi
+                fi += 1
+                if len(frame_traj) == n_his + n_future:
+                    cnt += 1
+                    break
+            else:
+                # When assuming quasi-static, we can pad to n_his + n_future
+                frame_traj = frame_traj + [frame_traj[-1]] * (n_his + n_future - len(frame_traj))
                 cnt += 1
-                break
-        else:
-            # When assuming quasi-static, we can pad to n_his + n_future
-            frame_traj = frame_traj + [frame_traj[-1]] * (n_his + n_future - len(frame_traj))
-            cnt += 1
-        
-        frame_idxs.append(frame_traj)
-        
-        if fj == end_frame:
-            frame_idxs = np.array(frame_idxs)
-            np.savetxt(os.path.join(frame_idx_dir, f"{epi_idx}_{curr_step}.txt"), frame_idxs, fmt="%d")
-            print(f"episode {epi_idx}, push {curr_step} has {cnt} pushes.")
-            frame_idxs = []
+            
+            frame_idxs.append(frame_traj)
+            
+            if fj == end_frame:
+                frame_idxs = np.array(frame_idxs)
+                np.savetxt(os.path.join(frame_idx_dir, f"{epi_idx}_{curr_step}.txt"), frame_idxs, fmt="%d")
+                print(f"episode {epi_idx}, push {curr_step} has {cnt} pushes.")
+                frame_idxs = []
     
     # save phys_params stat
     phys_params = np.stack(phys_params, axis=0)
