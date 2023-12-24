@@ -37,55 +37,52 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
         # load info
         actions = np.load(os.path.join(data_dir, f"episode_{epi_idx}/actions.npy"))
         steps = np.load(os.path.join(data_dir, f"episode_{epi_idx}/steps.npy"))
-        steps_a = np.concatenate([[2], steps], axis=0) # the first two frames are for canonicalization and initialization
-        # print(f"steps_a: {steps_a}")
-        if len(actions) != len(steps):
-            raise ValueError("The length of actions and steps are not equal.")
+        eef_pos = np.load(os.path.join(data_dir, f"episode_{epi_idx}/eef_pos.npy"))
+        particles_pos = np.load(os.path.join(data_dir, f"episode_{epi_idx}/particles_pos.npy"))
         
-        # save property params
         physics_path = os.path.join(data_dir, f"episode_{epi_idx}/property.json")
         with open(physics_path, "r") as f:
             properties = json.load(f)
         phys_param = np.array([
-            # properties['particle_radius'],
-            # properties['num_particles'],
-            properties['rand_scale'],
-            properties['blob_r'],
-            properties['num_granule'],
+            properties['particle_radius'],
+            properties['num_particles'],
+            properties['granular_scale'],
+            properties['num_granular'],
+            properties['distribution_r'],
             properties['dynamic_friction'],
-            properties['mass']
+            properties['granular_mass']
         ]).astype(np.float32)
         phys_params.append(phys_param)
         
-        frame_idxs = []
         # get start-end pairs
+        frame_idxs = []
         cnt = 0
         for fj in range(2, num_frames):
             curr_step = None
-            for si in range(len(steps_a) - 1):
+            for si in range(len(steps) - 1):
                 """
-                steps_a[si]: start frame of the push
-                steps_a[si + 1] - 2: end frame of the push
-                steps_a[si + 1] - 1: the final render for the push (not consider as a push)
-                steps_a[si + 1]: the start frame of the next push
+                steps[si]: start frame of the push
+                steps[si + 1] - 2: end frame of the push
+                steps[si + 1] - 1: the final render for the push (not consider as a push)
+                steps[si + 1]: the start frame of the next push
                 """
-                if fj >= steps_a[si] and fj <= steps_a[si + 1] - 2:
+                if fj >= steps[si] and fj <= steps[si + 1] - 2:
                     curr_step = si
                     break
             else:
-                continue
+                continue # this frame is not valid
             assert curr_step is not None
         
             curr_frame = fj
-            start_frame = steps_a[curr_step]
-            end_frame = steps_a[curr_step + 1] - 2
+            start_frame = steps[curr_step]
+            end_frame = steps[curr_step + 1] - 2
             
             # search backward (n_his)
-            eef_particles_curr = np.load(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/{curr_frame}_endeffector.npy"))
+            eef_particles_curr = eef_pos[curr_frame]
             frame_traj = [curr_frame]
             fi = fj
             while fi >= start_frame:
-                eef_particles_fi = np.load(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/{fi}_endeffector.npy"))
+                eef_particles_fi = eef_pos[fi]
                 x_curr, z_curr = eef_particles_curr[0], eef_particles_curr[1]
                 x_fi, z_fi = eef_particles_fi[0], eef_particles_fi[1]
                 dist_curr = np.sqrt((x_curr - x_fi) ** 2 + (z_curr - z_fi) ** 2)
@@ -98,13 +95,13 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
             else: 
                 # pad to n_his
                 frame_traj = frame_traj + [frame_traj[-1]] * (n_his - len(frame_traj))
+            frame_traj = frame_traj[::-1]
             
             # search forward (n_future)
-            eef_particles_curr = np.load(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/{curr_frame}_endeffector.npy"))
-            frame_traj = frame_traj[::-1]
+            eef_particles_curr = eef_pos[curr_frame]
             fi = fj
             while fi <= end_frame:
-                eef_particles_fi = np.load(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/{fi}_endeffector.npy"))
+                eef_particles_fi = eef_pos[fi]
                 x_curr, z_curr = eef_particles_curr[0], eef_particles_curr[1]
                 x_fi, z_fi = eef_particles_fi[0], eef_particles_fi[1]
                 dist_curr = np.sqrt((x_curr - x_fi) ** 2 + (z_curr - z_fi) ** 2)
@@ -122,6 +119,7 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
             
             frame_idxs.append(frame_traj)
             
+            # push_centered
             if fj == end_frame:
                 frame_idxs = np.array(frame_idxs)
                 np.savetxt(os.path.join(frame_idx_dir, f"{epi_idx}_{curr_step}.txt"), frame_idxs, fmt="%d")
@@ -138,10 +136,10 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
 
 if __name__ == "__main__":
     data_dir_list = [
-        "/mnt/sda/carrots"
+        "/mnt/sda/data/carrots_5"
     ]
     save_dir_list = [
-        "/mnt/sda/preprocess/carrots"
+        "/mnt/sda/preprocess/carrots_5"
     ]
     dist_thresh = 0.05
     n_his = 4
@@ -151,7 +149,6 @@ if __name__ == "__main__":
             os.makedirs(save_dir, exist_ok=True)
             extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
         # save metadata
-        with open(os.path.join(save_dir, "metadata.txt"), "w") as f:
-            f.write(f"dist_thresh: {dist_thresh}\n")
-            f.write(f"n_his: {n_his}\n")
-            f.write(f"n_future: {n_future}\n")
+        os.makedirs(save_dir, exist_ok=True)
+        with open(os.path.join(save_dir, 'metadata.txt'), 'w') as f:
+            f.write(f'{dist_thresh},{n_future},{n_his}')
