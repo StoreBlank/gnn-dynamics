@@ -60,3 +60,11 @@ def pad(x, max_dim, dim=0):
         x_pad = np.zeros((x.shape[0], max_dim, x.shape[2]), dtype=np.float32)
         x_pad[:, :x_dim] = x
     return x_pad
+
+def rgb_colormap(repeat=1):
+    base = np.asarray([
+        [0, 0, 255],
+        [0, 255, 0],
+        [255, 0, 0],
+    ])
+    return np.repeat(base, repeat, axis=0)
