@@ -3,15 +3,14 @@ import numpy as np
 
 def extract_kp(data_dir, episode_idx, start_frame, end_frame):
     # obtain object keypoints
-    obj_ptcl_start = np.load(os.path.join(data_dir, f"episode_{episode_idx}/camera_0/{start_frame}_particles.npy"))
-    obj_ptcl_end = np.load(os.path.join(data_dir, f"episode_{episode_idx}/camera_0/{end_frame}_particles.npy"))
-    obj_ptcl_start, obj_ptcl_end = obj_ptcl_start[:, :3], obj_ptcl_end[:, :3]
+    obj_ptcl = np.load(os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy"))
+    obj_ptcl_start, obj_ptcl_end = obj_ptcl[start_frame], obj_ptcl[end_frame]
     obj_kp = np.stack([obj_ptcl_start, obj_ptcl_end], axis=0)
     
     # obatin end-effector keypoints
-    y = 0.5 #TODO: check whether it is correct
-    eef_ptcl_start = np.load(os.path.join(data_dir, f"episode_{episode_idx}/camera_0/{start_frame}_endeffector.npy"))
-    eef_ptcl_end = np.load(os.path.join(data_dir, f"episode_{episode_idx}/camera_0/{end_frame}_endeffector.npy"))
+    # y = 0.5 #TODO: check whether it is correct
+    eef_ptcl = np.load(os.path.join(data_dir, f"episode_{episode_idx}/eef_pos.npy"))
+    eef_ptcl_start, eef_ptcl_end = eef_ptcl[start_frame], eef_ptcl[end_frame]
     x_start, z_start, y_start = eef_ptcl_start[0], eef_ptcl_start[1], eef_ptcl_start[2]
     x_end, z_end, y_end = eef_ptcl_end[0], eef_ptcl_end[1], eef_ptcl_end[2]
     
@@ -23,14 +22,15 @@ def extract_kp(data_dir, episode_idx, start_frame, end_frame):
 
 def extract_kp_single_frame(data_dir, episode_idx, frame_idx):
     # obtain object keypoints
-    obj_ptcl = np.load(os.path.join(data_dir, f"episode_{episode_idx}/camera_0/{frame_idx}_particles.npy"))
-    obj_ptcl = obj_ptcl[:, :3]
+    obj_ptcls = np.load(os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy"))
+    obj_ptcl = obj_ptcls[frame_idx]
     obj_kp = [obj_ptcl]
     
     # obatin end-effector keypoints
-    y = obj_kp[0][:, 1].mean() #TODO: check whether it is correct
-    eef_ptcl = np.load(os.path.join(data_dir, f"episode_{episode_idx}/camera_0/{frame_idx}_endeffector.npy"))
-    x, z = eef_ptcl[0], eef_ptcl[1]
+    # y = obj_kp[0][:, 1].mean() #TODO: check whether it is correct
+    eef_ptcls = np.load(os.path.join(data_dir, f"episode_{episode_idx}/eef_pos.npy"))
+    eef_ptcl = eef_ptcls[frame_idx]
+    x, z, y = eef_ptcl[0], eef_ptcl[1], eef_ptcl[2]
     eef_kp = np.array([[x, y, -z]])
     return obj_kp, eef_kp
 

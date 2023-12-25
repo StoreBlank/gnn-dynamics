@@ -26,16 +26,22 @@ def construct_edges_from_states(states, adj_thresh, mask, eef_mask, no_self_edge
     if isinstance(adj_thresh, float):
         adj_thresh = torch.tensor(adj_thresh, device=states.device, dtype=states.dtype).repeat(B)
     threshold = adj_thresh * adj_thresh
+    # convert threshold to tensor
+    threshold = torch.tensor(threshold, device=states.device, dtype=states.dtype)
+    
     dis = torch.sum((s_sender - s_receiv)**2, -1)
     mask_1 = mask[:, :, None].repeat(1, 1, N)
     mask_2 = mask[:, None, :].repeat(1, N, 1)
     mask_12 = mask_1 * mask_2
     dis[~mask_12] = 1e10  # avoid invalid particles to particles relations
+    
     eef_mask_1 = eef_mask[:, :, None].repeat(1, 1, N)
     eef_mask_2 = eef_mask[:, None, :].repeat(1, N, 1)
     eef_mask_12 = eef_mask_1 * eef_mask_2
     dis[eef_mask_12] = 1e10  # avoid eef to eef relations
+    
     adj_matrix = ((dis - threshold[:, None, None]) < 0).float()
+    # adj_matrix = adj_matrix.to(device=states.device, dtype=states.dtype)
 
     # remove self edge
     if no_self_edge:
@@ -62,6 +68,20 @@ def construct_edges_from_states(states, adj_thresh, mask, eef_mask, no_self_edge
     Rs[rels[:, 0], rels_idx, rels[:, 2]] = 1
     return Rr, Rs
 
+def load_pairs(pairs_path, episode_range):
+    pair_lists = []
+    for episode_idx in episode_range:
+        n_pushes = len(list(glob.glob(os.path.join(pairs_path, f'{episode_idx}_*.txt'))))
+        for push_idx in range(n_pushes):
+            frame_pairs = np.loadtxt(os.path.join(pairs_path, f'{episode_idx}_{push_idx}.txt'))
+            if len(frame_pairs.shape) == 1: continue
+            episodes = np.ones((frame_pairs.shape[0], 1)) * episode_idx
+            pairs = np.concatenate([episodes, frame_pairs], axis=1)
+            pair_lists.extend(pairs)
+    pair_lists = np.array(pair_lists).astype(int)
+    return pair_lists
+
+
 class CarrotsDynDataset(Dataset):
     def __init__(
         self,
@@ -71,7 +91,7 @@ class CarrotsDynDataset(Dataset):
         ratios, 
         dist_thresh,
         fps_radius_range, # radius for fps sampling
-        adj_thres_range, # threshold for constructing edges (not used here)
+        adj_thresh_range, # threshold for constructing edges (not used here)
         n_future,
         n_his,
         max_n, # max number of objects
@@ -105,14 +125,17 @@ class CarrotsDynDataset(Dataset):
         print(f"Found num_episodes: {num_episodes}")
         frame_count = 0
         for episode_idx in range(num_episodes):
-            n_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{episode_idx}/camera_0/*_particles.npy"))))
-            obj_kypts_paths = [os.path.join(data_dir, f"episode_{episode_idx}/camera_0", f"{frame_idx}_particles.npy") for frame_idx in range(n_frames)]
-            eef_kypts_paths = [os.path.join(data_dir, f"episode_{episode_idx}/camera_0", f"{frame_idx}_endeffector.npy") for frame_idx in range(n_frames)]
+            n_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{episode_idx}/camera_0/*_color.jpg"))))
+            obj_kypts_path = os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy")
+            eef_kypts_path = os.path.join(data_dir, f"episode_{episode_idx}/eef_pos.npy")
             physics_path = os.path.join(data_dir, f"episode_{episode_idx}/property.json")
-            self.obj_kypts_paths.append(obj_kypts_paths)
-            self.eef_kypts_paths.append(eef_kypts_paths)
+            
+            self.obj_kypts_paths.append(obj_kypts_path)
+            self.eef_kypts_paths.append(eef_kypts_path)
             self.physics_paths.append(physics_path)
+            
             frame_count += n_frames
+        
         print(f'Found {frame_count} frames in {data_dir}')
         
         # load data pairs
@@ -120,35 +143,38 @@ class CarrotsDynDataset(Dataset):
         pairs_path = os.path.join(save_dir, 'frame_pairs')
         self.pair_lists = []
         for episode_idx in range(num_episodes):
-            prev_pair_len = len(self.pair_lists)
             n_pushes = len(list(glob.glob(os.path.join(pairs_path, f'{episode_idx}_*.txt'))))
-            for push_idx in range(n_pushes):
+            for push_idx in range(n_pushes):   
                 frame_pairs = np.loadtxt(os.path.join(pairs_path, f'{episode_idx}_{push_idx}.txt'))
-                if len(frame_pairs.shape) == 1: continue
+                if len(frame_pairs.shape) == 1: 
+                    continue
                 episodes = np.ones((frame_pairs.shape[0], 1)) * episode_idx
                 pairs = np.concatenate([episodes, frame_pairs], axis=1)
-                self.pair_lists.append(pairs)
-            self.pair_lists = np.array(self.pair_lists)
-            print('pair lists shape: ', self.pair_lists.shape)
-            print(f'Found {len(self.pair_lists)} frame pairs in {pairs_path}')
+                self.pair_lists.extend(pairs)
+        self.pair_lists = np.array(self.pair_lists)
+        print('pair lists shape: ', self.pair_lists.shape)
+        print(f'Found {len(self.pair_lists)} frame pairs in {pairs_path}')
         
         # load phys_params 
         physics_range = np.loadtxt(os.path.join(save_dir, 'phys_range.txt')).astype(np.float32)
+        physics_range = physics_range[:, 2:4]
         self.physics_params = []
         for episode_idx in range(num_episodes):
             physics_path = self.physics_paths[episode_idx]
             assert os.path.join(self.data_dir, f"episode_{episode_idx}/property.json") == physics_path
             with open(physics_path, "r") as f:
                 properties = json.load(f)
-            phys_param = np.array([
+            
+            physics_param = np.array([
                 # properties['particle_radius'],
                 # properties['num_particles'],
-                properties['rand_scale'],
-                properties['blob_r'],
-                properties['num_granule'],
-                properties['dynamic_friction'],
-                properties['mass']
+                properties['granular_scale'],
+                properties['num_granular'],
+                # properties['distribution_r'],
+                # properties['dynamic_friction'],
+                # properties['granular_mass']
             ]).astype(np.float32)
+            
             physics_param = (physics_param - physics_range[0]) / (physics_range[1] - physics_range[0] + 1e-6)  # normalize
             self.physics_params.append(physics_param)
         self.physics_params = np.stack(self.physics_params, axis=0) # (N, phys_dim)
@@ -169,7 +195,7 @@ class CarrotsDynDataset(Dataset):
     def __len__(self):
         return len(self.pair_lists)
     
-    def __getitem__(self, idx):
+    def __getitem__(self, i):
         max_n = self.max_n
         max_nobj = self.max_nobj
         max_neef = self.max_neef
@@ -217,8 +243,8 @@ class CarrotsDynDataset(Dataset):
         # get current state delta
         eef_kp = np.stack(eef_kps[n_his-1:n_his+1], axis=0) # (2, 1, 3)
         eef_kp_num = eef_kp.shape[1]
-        start_delta = np.zeros((max_nobj + max_neef, obj_kp_start.shape[-1]), dtype=np.float32)
-        start_delta[max_nobj : max_nobj + eef_kp_num] = eef_kp[1] - eef_kp[0]
+        states_delta = np.zeros((max_nobj + max_neef, obj_kp_start.shape[-1]), dtype=np.float32)
+        states_delta[max_nobj : max_nobj + eef_kp_num] = eef_kp[1] - eef_kp[0]
         
         # load future states
         obj_kp_future = np.zeros((n_future, max_nobj, obj_kp_start.shape[-1]), dtype=np.float32)
@@ -327,7 +353,7 @@ class CarrotsDynDataset(Dataset):
             "state_future_mask": obj_future_mask, # (n_future, )
             
             # attr info
-            "attr": attrs, # (N+M, attr_dim)
+            "attrs": attrs, # (N+M, attr_dim)
             "p_rigid": p_rigid, # (n_instance, )
             "p_instance": p_instance, # (N, n_instance)
             "physics_param": physics_param, # (N, phys_dim)
