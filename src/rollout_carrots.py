@@ -34,7 +34,7 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
     n_his = 4
 
     # dist_thresh = 0.05  # only used in the dataset
-    adj_thresh = 0.3
+    adj_thresh = args.adj_thresh
     fps_radius = 0.10
     max_n = 1
     max_nobj = 100
@@ -411,6 +411,7 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
             # generate next graph
             # load eef kypts
             eef_kps = np.load(eef_kypts_paths).astype(np.float32)
+            # print(eef_kps.shape)
             eef_kp_start, eef_kp_end = eef_kps[current_start], eef_kps[current_end]
             x_start = eef_kp_start[0]
             z_start = eef_kp_start[1]
@@ -619,7 +620,7 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
 def rollout_vis():
     args = gen_args()
 
-    data_name = "carrots_1"
+    data_name = args.data_name
 
     data_dir = f"/mnt/sda/data/{data_name}"
 
@@ -628,7 +629,7 @@ def rollout_vis():
     start_idx = 0
     rollout_steps = 100
 
-    checkpoint_dir_name = "carrots_1_2"
+    checkpoint_dir_name = args.checkpoint_name
 
     checkpoint_epoch = 100
     checkpoint = f"/mnt/sda/relation_logs/{checkpoint_dir_name}/checkpoints/model_{checkpoint_epoch}.pth"
@@ -661,11 +662,11 @@ def rollout_vis():
 def rollout_eval():
     args = gen_args()
 
-    data_name = "carrots_1"
+    data_name = args.data_name
 
     data_dir = f"/mnt/sda/data/{data_name}"
 
-    checkpoint_dir_name = "carrots_1_5"
+    checkpoint_dir_name = args.checkpoint_name
 
     checkpoint_epoch = 100
     checkpoint = f"/mnt/sda/relation_logs/{checkpoint_dir_name}/checkpoints/model_{checkpoint_epoch}.pth"

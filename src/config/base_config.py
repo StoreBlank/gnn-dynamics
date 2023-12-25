@@ -21,9 +21,14 @@ system and run config
 '''
 parser.add_argument('--data_dir', type=str, default='/mnt/sda/data/carrots_1')
 parser.add_argument('--prep_save_dir', type=str, default='/mnt/sda/preprocess')
-parser.add_argument('--out_dir', type=str, default='/mnt/sda/logs/carrots_1_range_5')
+parser.add_argument('--out_dir', type=str, default='/mnt/sda/logs/carrots_1_1')
 parser.add_argument('--adj_thresh_min', type=float, default=0.09)
 parser.add_argument('--adj_thresh_max', type=float, default=0.11)
+
+# evaluate
+parser.add_argument('--data_name', type=str, default='carrots_5')
+parser.add_argument('--checkpoint_name', type=str, default='carrots_5_5')
+parser.add_argument('--adj_thresh', type=float, default=0.05)
 
 parser.add_argument('--random_seed', type=int, default=42)
 parser.add_argument('--verbose', type=int, default=0)
