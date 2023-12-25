@@ -95,8 +95,8 @@ def train_carrots(out_dir, data_dirs, prep_save_dir=None, material='carrots', ra
             "n_his": n_his,
             "n_future": n_future,
             "dist_thresh": dist_thresh,
-            "adj_thresh_range": adj_thresh_range, # construct edge
-            "fps_radius_range": [0.09, 0.11], # fps sampling: determine number of nodes
+            "adj_thresh_range": adj_thresh_range, # adj_thresh_range, # construct edge
+            "fps_radius_range": adj_thresh_range, # fps sampling: determine number of nodes
             "max_n": 1, # number of objects
             "max_nobj": 100, # number of particles per object
             "max_neef": 1, # number of eef particles
@@ -109,7 +109,7 @@ def train_carrots(out_dir, data_dirs, prep_save_dir=None, material='carrots', ra
             "n_future": n_future,
             "dist_thresh": dist_thresh,
             "adj_thresh_range": adj_thresh_range,
-            "fps_radius_range": [0.09, 0.11],
+            "fps_radius_range": adj_thresh_range,
             "max_n": 1,
             "max_nobj": 100,
             "max_neef": 1,
@@ -218,8 +218,8 @@ def train_carrots(out_dir, data_dirs, prep_save_dir=None, material='carrots', ra
                         # construct edges/relations
                         data['Rr'], data['Rs'] = construct_relations(data['state'], state_mask, eef_mask,
                                                                      adj_thresh_range=data_kwargs[phase]['adj_thresh_range'],)
-                        print(f"Rr: {data['Rr'].shape}, Rs: {data['Rs'].shape}")
-                        print(f"number of states: {data['state_future'].shape}")
+                        # print(f"Rr: {data['Rr'].shape}, Rs: {data['Rs'].shape}")
+                        # print(f"number of states: {data['state_future'].shape}")
                         
                         # predict state
                         pred_state, pred_motion = model(**data)
