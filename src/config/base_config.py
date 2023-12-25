@@ -19,6 +19,12 @@ parser.add_argument('--state_normalize', type=int, default=1)
 '''
 system and run config
 '''
+parser.add_argument('--data_dir', type=str, default='/mnt/sda/data/carrots_5')
+parser.add_argument('--prep_save_dir', type=str, default='/mnt/sda/preprocess')
+parser.add_argument('--out_dir', type=str, default='/mnt/sda/logs/carrots_1_range_5')
+parser.add_argument('--adj_thresh_min', type=float, default=0.09)
+parser.add_argument('--adj_thresh_max', type=float, default=0.11)
+
 parser.add_argument('--random_seed', type=int, default=42)
 parser.add_argument('--verbose', type=int, default=0)
 

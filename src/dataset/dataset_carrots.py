@@ -190,7 +190,7 @@ class CarrotsDynDataset(Dataset):
             episode_len = len(self.pair_lists[self.pair_lists[:, 0] == episode_idx])
             if episode_len != 0:
                 episode_cnt += 1
-        print(f'{phase} dataset has {episode_cnt} episodes')
+        print(f'{phase} dataset has {episode_cnt} episodes')         
         
     def __len__(self):
         return len(self.pair_lists)

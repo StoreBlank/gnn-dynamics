@@ -2,6 +2,7 @@ import os
 import time
 import sys
 import numpy as np
+from argparse import ArgumentParser
 
 import glob
 import matplotlib
@@ -87,11 +88,14 @@ def train_carrots(out_dir, data_dirs, prep_save_dir=None, material='carrots', ra
     n_future = 3
     dist_thresh = 0.05
     
+    adj_thresh_range = [args.adj_thresh_min, args.adj_thresh_max]
+    print(f"adj_thresh_range: {adj_thresh_range}")
+    
     data_kwargs = {"train": {
             "n_his": n_his,
             "n_future": n_future,
             "dist_thresh": dist_thresh,
-            "adj_thresh_range": [0.09, 0.11], # construct edge
+            "adj_thresh_range": adj_thresh_range, # construct edge
             "fps_radius_range": [0.09, 0.11], # fps sampling: determine number of nodes
             "max_n": 1, # number of objects
             "max_nobj": 100, # number of particles per object
@@ -104,7 +108,7 @@ def train_carrots(out_dir, data_dirs, prep_save_dir=None, material='carrots', ra
             "n_his": n_his,
             "n_future": n_future,
             "dist_thresh": dist_thresh,
-            "adj_thresh_range": [0.09, 0.11],
+            "adj_thresh_range": adj_thresh_range,
             "fps_radius_range": [0.09, 0.11],
             "max_n": 1,
             "max_nobj": 100,
@@ -214,6 +218,8 @@ def train_carrots(out_dir, data_dirs, prep_save_dir=None, material='carrots', ra
                         # construct edges/relations
                         data['Rr'], data['Rs'] = construct_relations(data['state'], state_mask, eef_mask,
                                                                      adj_thresh_range=data_kwargs[phase]['adj_thresh_range'],)
+                        print(f"Rr: {data['Rr'].shape}, Rs: {data['Rs'].shape}")
+                        print(f"number of states: {data['state_future'].shape}")
                         
                         # predict state
                         pred_state, pred_motion = model(**data)
@@ -274,7 +280,6 @@ def train_carrots(out_dir, data_dirs, prep_save_dir=None, material='carrots', ra
                         
                         
 if __name__ == '__main__':
-    train_data_dir = '/mnt/sda/data/carrots_1'
-    prep_save_dir = '/mnt/sda/preprocess'
-    out_dir = '/mnt/sda/logs/carrots_1'
-    train_carrots(out_dir, train_data_dir, prep_save_dir=prep_save_dir)
+    args = gen_args()
+    
+    train_carrots(args.out_dir, args.data_dir, prep_save_dir=args.prep_save_dir)

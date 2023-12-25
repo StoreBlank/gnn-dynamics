@@ -135,11 +135,12 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
     np.savetxt(os.path.join(save_dir, "phys_range.txt"), phys_params_range)
 
 if __name__ == "__main__":
+    i = 4
     data_dir_list = [
-        "/mnt/sda/data/carrots_5"
+        f"/mnt/sda/data/carrots_{i}"
     ]
     save_dir_list = [
-        "/mnt/sda/preprocess/carrots_5"
+        f"/mnt/sda/preprocess/carrots_{i}"
     ]
     dist_thresh = 0.05
     n_his = 4
