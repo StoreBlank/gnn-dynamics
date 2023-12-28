@@ -79,7 +79,7 @@ def train_carrots(out_dir, data_dirs, prep_save_dir=None, material='carrots', ra
     
     # training hyperparameters
     batch_size = 64
-    n_epoch = 10
+    n_epoch = 1
     n_iters_per_epoch = {'train': 250, 'valid': 25}
     log_interval = 50
     

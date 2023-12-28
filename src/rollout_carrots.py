@@ -16,8 +16,6 @@ import matplotlib.pyplot as plt
 
 import cv2
 import glob
-from PIL import Image
-import pickle as pkl
 from dgl.geometry import farthest_point_sampler
 
 from dataset.dataset_carrots import construct_edges_from_states, pad
@@ -97,7 +95,6 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
     line_alpha = 0.5
 
     # load pairs
-    # pairs = np.loadtxt(os.path.join(prep_save_dir, 'frame_pairs', f'{episode_idx}.txt')).astype(int)
     pairs = np.loadtxt(os.path.join(prep_save_dir, 'frame_pairs', f'{episode_idx}_{push_idx}.txt')).astype(int)
     if len(pairs.shape) == 1: raise Exception
     print(f'Found {len(pairs)} frame pairs for episode {episode_idx}')
@@ -411,14 +408,8 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
             # generate next graph
             # load eef kypts
             eef_kps = np.load(eef_kypts_paths).astype(np.float32)
-            # print(eef_kps.shape)
             eef_kp_start, eef_kp_end = eef_kps[current_start], eef_kps[current_end]
-            x_start = eef_kp_start[0]
-            z_start = eef_kp_start[1]
-            x_end = eef_kp_end[0]
-            z_end = eef_kp_end[1]
-            y = np.mean(obj_kp[:, 1])
-            eef_kp = np.array([[[x_start, y, -z_start]], [[x_end, y, -z_end]]], dtype=np.float32)  # (2, 1, 3)
+            eef_kp = np.stack([[eef_kp_start], [eef_kp_end]], axis=0)
             eef_kp_num = eef_kp.shape[1]
             eef_kp = pad(eef_kp, max_neef, dim=1)
 
@@ -617,24 +608,13 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
         np.savetxt(os.path.join(save_dir, f'error_{episode_idx}-{push_idx}-{start_idx}-{rollout_steps}.txt'), error_list)
         return error_list
 
-def rollout_vis():
+def rollout_vis(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, prep_save_dir):
     args = gen_args()
-
-    data_name = args.data_name
-
-    data_dir = f"/mnt/sda/data/{data_name}"
 
     episode_idx = 24
     push_idx = 0
     start_idx = 0
     rollout_steps = 100
-
-    checkpoint_dir_name = args.checkpoint_name
-
-    checkpoint_epoch = 100
-    checkpoint = f"/mnt/sda/relation_logs/{checkpoint_dir_name}/checkpoints/model_{checkpoint_epoch}.pth"
-
-    prep_save_dir = f"/mnt/sda/preprocess/{data_name}"
 
     colormap = rgb_colormap(repeat=100)  # only red
     # colormap = label_colormap()
@@ -649,7 +629,7 @@ def rollout_vis():
 
     for cam in range(4):
         img_path = os.path.join(save_dir, f"camera_{cam}")
-        frame_rate = 4
+        frame_rate = 2 #4
         height = 360
         width = 640
         pred_out_path = os.path.join(img_path, "pred.mp4")
@@ -659,19 +639,8 @@ def rollout_vis():
         both_out_path = os.path.join(img_path, "both.mp4")
         os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/{episode_idx:06}_*_both.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {both_out_path} -y")
 
-def rollout_eval():
+def rollout_eval(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, prep_save_dir):
     args = gen_args()
-
-    data_name = args.data_name
-
-    data_dir = f"/mnt/sda/data/{data_name}"
-
-    checkpoint_dir_name = args.checkpoint_name
-
-    checkpoint_epoch = 100
-    checkpoint = f"/mnt/sda/relation_logs/{checkpoint_dir_name}/checkpoints/model_{checkpoint_epoch}.pth"
-
-    prep_save_dir = f"/mnt/sda/preprocess/{data_name}"
 
     save_dir = f"/mnt/sda/eval/rollout-eval-{checkpoint_dir_name}-model_{checkpoint_epoch}-{data_dir.split('/')[-1]}"
     os.makedirs(save_dir, exist_ok=True)
@@ -722,5 +691,13 @@ def rollout_eval():
     plt.close()
 
 if __name__ == "__main__":
-    rollout_vis()
-    rollout_eval()
+    args = gen_args()
+    data_name = args.data_name
+    data_dir = f"/mnt/sda/data/{data_name}"
+    checkpoint_dir_name = args.checkpoint_name
+    checkpoint_epoch = args.checkpoint_epoch
+    # checkpoint = f"/mnt/sda/relation_logs/{checkpoint_dir_name}/checkpoints/model_{checkpoint_epoch}.pth"
+    checkpoint = f"/mnt/sda/logs/{checkpoint_dir_name}/checkpoints/latest.pth"
+    prep_save_dir = f"/mnt/sda/preprocess/{data_name}"
+    rollout_vis(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, prep_save_dir)
+    rollout_eval(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, prep_save_dir)
