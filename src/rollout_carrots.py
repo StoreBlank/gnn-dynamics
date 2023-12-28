@@ -90,7 +90,7 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
 
     # vis
     n_fps_vis = 20
-    point_size = 5
+    point_size = 3
     line_size = 2
     line_alpha = 0.5
 
@@ -696,8 +696,8 @@ if __name__ == "__main__":
     data_dir = f"/mnt/sda/data/{data_name}"
     checkpoint_dir_name = args.checkpoint_name
     checkpoint_epoch = args.checkpoint_epoch
-    # checkpoint = f"/mnt/sda/relation_logs/{checkpoint_dir_name}/checkpoints/model_{checkpoint_epoch}.pth"
-    checkpoint = f"/mnt/sda/logs/{checkpoint_dir_name}/checkpoints/latest.pth"
+    checkpoint = f"/mnt/sda/relation_logs/{checkpoint_dir_name}/checkpoints/model_{checkpoint_epoch}.pth"
+    # checkpoint = f"/mnt/sda/logs/{checkpoint_dir_name}/checkpoints/latest.pth"
     prep_save_dir = f"/mnt/sda/preprocess/{data_name}"
     rollout_vis(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, prep_save_dir)
     rollout_eval(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, prep_save_dir)

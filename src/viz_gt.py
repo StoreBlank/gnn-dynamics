@@ -21,9 +21,9 @@ def viz_gt():
     n_future = 4
     n_his = 3
     
-    fps_radius = 0.10
+    fps_radius = 0.1
     max_n = 1
-    max_nobj = 50
+    max_nobj = 300
     max_neef = 1
     
     # visualization hyperparameters
@@ -89,11 +89,13 @@ def viz_gt():
         # fps
         particle_tensor = torch.from_numpy(obj_kp_start[j]).float()[None, ...]
         fps_idx_tensor = farthest_point_sampler(particle_tensor, max_nobj, start_idx = np.random.randint(0, obj_kp_start[j].shape[0]))[0]
-        fps_idx_1 = fps_idx_tensor.numpy().astype(np.int32)
+        fps_idx_1 = fps_idx_tensor.numpy().astype(np.int32) # (max_nobj,)
+        print(f"fps_idx_1: {fps_idx_1.shape}")
         
         # downsample to uniform radius
         downsample_particle = particle_tensor[0, fps_idx_1, :].numpy()
-        _, fps_idx_2 = fps_rad_idx(downsample_particle, fps_radius)
+        _, fps_idx_2 = fps_rad_idx(downsample_particle, fps_radius) # (max_nobj,)
+        print(f"fps_idx_2: {fps_idx_2.shape}")
         fps_idx = fps_idx_1[fps_idx_2]
         fps_idx_list.append(fps_idx)
         
@@ -194,6 +196,7 @@ def viz_gt():
         gt_state = [gt_state]
         gt_state = [gt_state[j][fps_idx] for j, fps_idx in enumerate(fps_idx_list)]
         gt_state = np.concatenate(gt_state, axis=0)
+        # print(f"Frame {current_end} gt_state shape: {gt_state.shape}") # (max_obj, 3)
         gt_state = pad(gt_state, max_nobj)
         
         # next step input

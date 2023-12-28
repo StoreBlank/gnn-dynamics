@@ -27,9 +27,9 @@ parser.add_argument('--adj_thresh_max', type=float, default=0.11)
 
 # evaluate
 parser.add_argument('--data_name', type=str, default='carrots_5')
-parser.add_argument('--checkpoint_name', type=str, default='carrots_1_1')
-parser.add_argument('--checkpoint_epoch', type=int, default=100)
-parser.add_argument('--adj_thresh', type=float, default=0.2)
+parser.add_argument('--checkpoint_name', type=str, default='carrots_5_5')
+parser.add_argument('--checkpoint_epoch', type=int, default=80) #100
+parser.add_argument('--adj_thresh', type=float, default=0.1)
 
 parser.add_argument('--random_seed', type=int, default=42)
 parser.add_argument('--verbose', type=int, default=0)
