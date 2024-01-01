@@ -131,8 +131,8 @@ def train_carrots(out_dir, data_dirs, prep_save_dir=None, material='carrots', ra
     # particle encoder
     args.attr_dim = 2
     args.n_his = n_his
-    args.state_dim = 0 # x, y, z
-    args.offset_dim = 0
+    args.state_dim = 0 # abd (x, y, z) # not used in particle encoder and thus set to 0
+    args.offset_dim = 0 # similar with the state_dim
     args.action_dim = 3
     args.pstep = 3
     args.time_step = 1
@@ -154,7 +154,7 @@ def train_carrots(out_dir, data_dirs, prep_save_dir=None, material='carrots', ra
     args.rel_canonical_thresh = 3 * data_kwargs['train']['adj_thresh_range'][0]
     
     # TODO rel can attr
-    args.rel_can_attr_dim = 0 # canonical
+    args.rel_can_attr_dim = 0 
     
     # TODO physencoder
     args.use_vae = False
