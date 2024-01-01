@@ -12,14 +12,15 @@ tool_dim = [92, 92]
 
 
 
-def main():
+def main(vis=True):
     tool_list = []
     for i in range(len(tool_name_list)):
         tool_mesh = o3d.io.read_triangle_mesh(os.path.join(tool_geom_path, f"{tool_name_list[i]}.stl"))
         tool_surface = o3d.geometry.TriangleMesh.sample_points_poisson_disk(tool_mesh, 10000)
         tool_list.append((tool_mesh, tool_surface))
-        # visualize tool surface
-        # o3d.visualization.draw_geometries([tool_surface])
+        if vis:
+            # visualize tool surface
+            o3d.visualization.draw_geometries([tool_surface])
         
     write_frames = False
     write_gt_state = False
@@ -48,28 +49,28 @@ def main():
         )
         # print(f"bag_path: {bag_path}")
         
-        bag_list = sorted(
-            glob.glob(os.path.join(bag_path, "*.bag")),
-            key=lambda x: float(os.path.basename(x)[:-4]),
-        )
+        # bag_list = sorted(
+        #     glob.glob(os.path.join(bag_path, "*.bag")),
+        #     key=lambda x: float(os.path.basename(x)[:-4]),
+        # )
         
-        rollout_path = os.path.join(rollout_dir, f"{vid_idx}")
-        image_path = os.path.join(rollout_path, "images")
-        os.system("mkdir -p " + rollout_path)
-        if write_frames:
-            os.system("mkdir -p " + f"{rollout_path}/frames")
-        if write_gt_state:
-            os.system("mkdir -p " + f"{image_path}")
+        # rollout_path = os.path.join(rollout_dir, f"{vid_idx}")
+        # image_path = os.path.join(rollout_path, "images")
+        # os.system("mkdir -p " + rollout_path)
+        # if write_frames:
+        #     os.system("mkdir -p " + f"{rollout_path}/frames")
+        # if write_gt_state:
+        #     os.system("mkdir -p " + f"{image_path}")
         
-        state_seq = []
-        pcd_dense_prev, pcd_sparse_prev = None, None
-        is_moving_back = False
-        last_dist = float("inf")
-        start_frame = 0
-        step_size = 1
-        # for j in tqdm(
-        #     range(start_frame, len(bag_list), step_size), desc=f"Video {vid_idx}"
-        # ):
+        # state_seq = []
+        # pcd_dense_prev, pcd_sparse_prev = None, None
+        # is_moving_back = False
+        # last_dist = float("inf")
+        # start_frame = 0
+        # step_size = 1
+        # # for j in tqdm(
+        # #     range(start_frame, len(bag_list), step_size), desc=f"Video {vid_idx}"
+        # # ):
         
 
 

@@ -2,6 +2,9 @@ import os
 import glob
 import json
 import numpy as np
+import open3d as o3d
+
+from utils import quaternion_to_rotation_matrix
 
 """
 Preprocess data to save the following:
@@ -36,6 +39,7 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
         
         # load info
         steps = np.load(os.path.join(data_dir, f"episode_{epi_idx}/steps.npy"))
+        # eef pos is corresponding to the sponge states (tool)
         eef_states = np.load(os.path.join(data_dir, f"episode_{epi_idx}/sponge_states.npy"))
         eef_pos = eef_states[:, :3]
         
@@ -126,6 +130,62 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
     phys_params_range = np.stack([phys_params_min, phys_params_max], axis=0)
     print(f"phys_params_range: {phys_params_range}")
     np.savetxt(os.path.join(save_dir, "phys_range.txt"), phys_params_range)
+    
+def extract_tool_points(data_dir, tool_names, tool_scale, tool_sampled_points=100):
+    num_episodes = len(list(glob.glob(os.path.join(data_dir, f"episode_*"))))
+    print(f"Preprocessing tool starts. Number of episodes: {num_episodes}")
+    
+    n_tools = len(tool_names)
+    print(f"There are {n_tools} tools: {tool_names}")
+    
+    for epi_idx in range(num_episodes):
+        num_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/*_color.jpg"))))
+        print(f"Processing episode {epi_idx}, num_frames: {num_frames}")
+        
+        # load the tool mesh and get the initial point cloud
+        tool_mesh_dir = os.path.join(data_dir, f"geometries/tools")
+        tool_surface_points_list = []
+        for i in range(n_tools):
+            # convert mesh to point cloud
+            tool_mesh_path = os.path.join(tool_mesh_dir, f'{tool_names[i]}.obj')
+            tool_mesh = o3d.io.read_triangle_mesh(tool_mesh_path)
+            
+            tool_surface = o3d.geometry.TriangleMesh.sample_points_poisson_disk(tool_mesh, tool_sampled_points)
+            # tool_surface = o3d.geometry.TriangleMesh.sample_points_uniformly(tool_mesh, sample_points)
+            
+            # rescale the point cloud
+            tool_surface.points = o3d.utility.Vector3dVector(np.asarray(tool_surface.points) * tool_scale[i])
+            tool_surface_points_list.append(tool_surface.points)
+        
+        # obtain the tool points for each frame
+        all_tool_points = np.zeros((n_tools, num_frames, tool_sampled_points, 3))
+        for i in range(n_tools):
+            tool_i_frame_points = []
+            for frame_idx in range(num_frames):
+                # load init tool surface
+                tool_surface_f = o3d.geometry.PointCloud()
+                tool_surface_f.points = o3d.utility.Vector3dVector(tool_surface_points_list[i])
+                
+                # load the pos and orientation of the tool
+                tool_points_path = os.path.join(data_dir, f"episode_{epi_idx}/{tool_names[i]}_states.npy")
+                tool_points = np.load(tool_points_path)
+                
+                tool_ori = tool_points[frame_idx, 3:]
+                tool_rot = quaternion_to_rotation_matrix(tool_ori)
+                tool_surface_f.rotate(tool_rot)
+                
+                tool_pos = tool_points[frame_idx, :3]
+                tool_surface_f.translate(tool_pos)
+                
+                tool_i_frame_points.append(np.asarray(tool_surface_f.points))
+            
+            all_tool_points[i] = np.stack(tool_i_frame_points, axis=0)
+        
+        # save the tool points to the data_dir
+        for idx, tool_name in enumerate(tool_names):
+            np.save(os.path.join(data_dir, f"episode_{epi_idx}/{tool_name}_points.npy"), all_tool_points[idx])
+            print(f"Tool {tool_name} points saved to {data_dir}/episode_{epi_idx}/{tool_name}_points.npy")
+        
 
 if __name__ == "__main__":
     # i = 4
@@ -139,10 +199,14 @@ if __name__ == "__main__":
     dist_thresh = 0.2 #4cm
     n_his = 4
     n_future = 3
+    tool_names = ['dustpan', 'sponge']
+    tool_scale = [1.1, 8.0]
+    
     for data_dir, save_dir in zip(data_dir_list, save_dir_list):
         if os.path.isdir(data_dir):
             os.makedirs(save_dir, exist_ok=True)
-            extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
+            # extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
+            extract_tool_points(data_dir, tool_names, tool_scale)
         # save metadata
         os.makedirs(save_dir, exist_ok=True)
         with open(os.path.join(save_dir, 'metadata.txt'), 'w') as f:
