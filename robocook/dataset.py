@@ -51,15 +51,21 @@ for vid_path_idx in range(1):
         gt_action_list.append(gt_state[n_particles+floor_dim :])
     
     action_data_list.append(torch.stack(gt_action_list))
-    # print(action_data_list[0].shape) # (16, 184, 6)
+    # print(action_data_list[0].shape) # (16, 184, 6) # (184=92+92) # tool_dim: "gripper_sym_rod": [92, 92],
     
     state_seq_list = []
     # print(n_frames - time_step * data_time_step * (n_his + sequence_length - 1)) # 9
     for i in range(frame_start, n_frames - time_step * data_time_step * (n_his + sequence_length - 1)):
         state_seq = []
         # history frames
-        for j in range(i, i + time_step * (n_his - 1) + 1, time_step):
+        for j in range(
+            i, 
+            i + time_step * (n_his - 1) + 1, 
+            time_step
+        ):
+            # print(f'history frame: {j}')
             state_seq.append(gt_state_list[j])
+        # print(f'history frames: {len(state_seq)}') # 4
         
         # frames to predict
         for j in range(
@@ -67,14 +73,33 @@ for vid_path_idx in range(1):
             i + time_step * (n_his + sequence_length - 1) + 1, 
             time_step
         ):
+            # print(f'future frame: {j}')
             state_seq.append(gt_state_list[j])
+        # print(f'frames to predict: {len(state_seq)}') # 8
         
         dataset_len += 1
         state_seq_list.append(torch.stack(state_seq))
     
+    # print(f'state_seq_list: {len(state_seq_list)}')
+    
     state_data_list.append(torch.stack(state_seq_list))
     print(f"{phase} -> number of sequences: {dataset_len}")
-        
+    # print(state_data_list[0].shape) # (9, 8, 493, 6)
+    
+    ### get item
+    idx_curr = 1
+    idx_vid = 0
 
-
+    state_seq = state_data_list[idx_vid][idx_curr][
+            : n_his + sequence_length
+        ]
+    action_seq = action_data_list[idx_vid][
+        idx_curr : idx_curr
+        + data_time_step
+        * time_step
+        * (n_his + sequence_length - 1)
+        + 1 : data_time_step
+    ]
+    print(f"state_seq.shape: {state_seq.shape}") # (8, 493, 6)
+    print(f"action_seq.shape: {action_seq.shape}") # (8, 184, 6)
 

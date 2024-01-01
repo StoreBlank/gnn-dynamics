@@ -4,7 +4,7 @@ import json
 import numpy as np
 
 """
-Preprocess carrots data to save the following:
+Preprocess data to save the following:
     - frame_pairs: a directory containing the start-end frame pairs for each push.
         - {epi_idx}_{push_idx}.txt: save the push pairs for each frame: (n_his - 1, curr, n_future)
     - phys_range.txt: a file containing the min and max of the physical parameters.
@@ -35,12 +35,11 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
         print(f"Processing episode {epi_idx}, num_frames: {num_frames}")
         
         # load info
-        actions = np.load(os.path.join(data_dir, f"episode_{epi_idx}/actions.npy"))
         steps = np.load(os.path.join(data_dir, f"episode_{epi_idx}/steps.npy"))
-        eef_pos = np.load(os.path.join(data_dir, f"episode_{epi_idx}/eef_pos.npy"))
-        particles_pos = np.load(os.path.join(data_dir, f"episode_{epi_idx}/particles_pos.npy"))
+        eef_states = np.load(os.path.join(data_dir, f"episode_{epi_idx}/sponge_states.npy"))
+        eef_pos = eef_states[:, :3]
         
-        physics_path = os.path.join(data_dir, f"episode_{epi_idx}/property.json")
+        physics_path = os.path.join(data_dir, f"episode_{epi_idx}/property_params.json")
         with open(physics_path, "r") as f:
             properties = json.load(f)
         phys_param = np.array([
@@ -57,16 +56,10 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
         # get start-end pairs
         frame_idxs = []
         cnt = 0
-        for fj in range(2, num_frames):
+        for fj in range(num_frames):
             curr_step = None
             for si in range(len(steps) - 1):
-                """
-                steps[si]: start frame of the push
-                steps[si + 1] - 2: end frame of the push
-                steps[si + 1] - 1: the final render for the push (not consider as a push)
-                steps[si + 1]: the start frame of the next push
-                """
-                if fj >= steps[si] and fj <= steps[si + 1] - 2:
+                if fj >= steps[si] and fj < steps[si + 1]:
                     curr_step = si
                     break
             else:
@@ -75,7 +68,7 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
         
             curr_frame = fj
             start_frame = steps[curr_step]
-            end_frame = steps[curr_step + 1] - 2
+            end_frame = steps[curr_step + 1] - 1
             
             # search backward (n_his)
             eef_particles_curr = eef_pos[curr_frame]
@@ -135,12 +128,13 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
     np.savetxt(os.path.join(save_dir, "phys_range.txt"), phys_params_range)
 
 if __name__ == "__main__":
-    i = 4
+    # i = 4
+    data_name = "granular_sweeping_dustpan"
     data_dir_list = [
-        f"/mnt/sda/data/carrots_{i}"
+        f"/mnt/sda/data/{data_name}"
     ]
     save_dir_list = [
-        f"/mnt/sda/preprocess/carrots_{i}"
+        f"/mnt/sda/preprocess/{data_name}"
     ]
     dist_thresh = 0.2 #4cm
     n_his = 4
