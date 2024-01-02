@@ -205,8 +205,12 @@ if __name__ == "__main__":
     for data_dir, save_dir in zip(data_dir_list, save_dir_list):
         if os.path.isdir(data_dir):
             os.makedirs(save_dir, exist_ok=True)
-            # extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
+            print("================extract_pushes================")
+            extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
+            print("==============================================")
+            print("================extract_tool_points================")
             extract_tool_points(data_dir, tool_names, tool_scale)
+            print("==============================================")
         # save metadata
         os.makedirs(save_dir, exist_ok=True)
         with open(os.path.join(save_dir, 'metadata.txt'), 'w') as f:

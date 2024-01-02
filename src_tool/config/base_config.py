@@ -5,12 +5,6 @@ from datetime import datetime
 ### build arguments
 parser = argparse.ArgumentParser()
 
-'''
-LLM config
-'''
-parser.add_argument('--llm', type=str, default='gpt-3.5-turbo-0613')  # [gpt-3.5-turbo-0613, gpt-4]
-parser.add_argument('--api-key', type=str, default='../api_key.txt')
-
 """
 GNN config
 """
