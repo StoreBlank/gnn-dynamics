@@ -9,6 +9,65 @@ from torch.utils.data import Dataset
 from dgl.geometry import farthest_point_sampler
 from utils import pad, extract_kp_single_frame, fps_rad_idx
 
+def construct_edges_from_states(states, adj_thresh, mask, eef_mask, no_self_edge=False):  # helper function for construct_graph
+    # :param states: (B, N, state_dim) torch tensor
+    # :param adj_thresh: (B, ) torch tensor
+    # :param mask: (B, N) torch tensor, true when index is a valid particle
+    # :param eef_mask: (B, N) torch tensor, true when index is a valid eef particle
+    # :return:
+    # - Rr: (B, n_rel, N) torch tensor
+    # - Rs: (B, n_rel, N) torch tensor
+    B, N, state_dim = states.shape
+    s_receiv = states[:, :, None, :].repeat(1, 1, N, 1)
+    s_sender = states[:, None, :, :].repeat(1, N, 1, 1)
+
+    # dis: B x particle_num x particle_num
+    # adj_matrix: B x particle_num x particle_num
+    if isinstance(adj_thresh, float):
+        adj_thresh = torch.tensor(adj_thresh, device=states.device, dtype=states.dtype).repeat(B)
+    threshold = adj_thresh * adj_thresh
+    # convert threshold to tensor
+    threshold = torch.tensor(threshold, device=states.device, dtype=states.dtype)
+    
+    dis = torch.sum((s_sender - s_receiv)**2, -1)
+    mask_1 = mask[:, :, None].repeat(1, 1, N)
+    mask_2 = mask[:, None, :].repeat(1, N, 1)
+    mask_12 = mask_1 * mask_2
+    dis[~mask_12] = 1e10  # avoid invalid particles to particles relations
+    
+    eef_mask_1 = eef_mask[:, :, None].repeat(1, 1, N)
+    eef_mask_2 = eef_mask[:, None, :].repeat(1, N, 1)
+    eef_mask_12 = eef_mask_1 * eef_mask_2
+    dis[eef_mask_12] = 1e10  # avoid eef to eef relations
+    
+    adj_matrix = ((dis - threshold[:, None, None]) < 0).float()
+    # adj_matrix = adj_matrix.to(device=states.device, dtype=states.dtype)
+
+    # remove self edge
+    if no_self_edge:
+        self_edge_mask = torch.eye(N, device=states.device, dtype=states.dtype)[None, :, :]
+        adj_matrix = adj_matrix * (1 - self_edge_mask)
+
+    # add topk constraints
+    topk = 5
+    topk_idx = torch.topk(dis, k=topk, dim=-1, largest=False)[1]
+    topk_matrix = torch.zeros_like(adj_matrix)
+    topk_matrix.scatter_(-1, topk_idx, 1)
+    adj_matrix = adj_matrix * topk_matrix
+    
+    n_rels = adj_matrix.sum(dim=(1,2))
+    # print(n_rels.shape, (mask * 1.0).sum(-1).mean().item(), n_rels.mean().item())
+    n_rel = n_rels.max().long().item()
+    rels_idx = []
+    rels_idx = [torch.arange(n_rels[i]) for i in range(B)]
+    rels_idx = torch.hstack(rels_idx).to(device=states.device, dtype=torch.long)
+    rels = adj_matrix.nonzero()
+    Rr = torch.zeros((B, n_rel, N), device=states.device, dtype=states.dtype)
+    Rs = torch.zeros((B, n_rel, N), device=states.device, dtype=states.dtype)
+    Rr[rels[:, 0], rels_idx, rels[:, 1]] = 1
+    Rs[rels[:, 0], rels_idx, rels[:, 2]] = 1
+    return Rr, Rs
+
 def load_pairs(pairs_path, episode_range):
     pair_lists = []
     for episode_idx in episode_range:
@@ -69,7 +128,7 @@ class GranularToolDynDataset(Dataset):
         for episode_idx in range(num_episodes):
             n_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{episode_idx}/camera_0/*_color.jpg"))))
             obj_kypts_path = os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy")
-            physics_path = os.path.join(data_dir, f"episode_{episode_idx}/property.json")
+            physics_path = os.path.join(data_dir, f"episode_{episode_idx}/property_params.json")
             
             static_tool_kypts_path = os.path.join(data_dir, f"episode_{episode_idx}/dustpan_points.npy")
             dynamic_tool_kypts_path = os.path.join(data_dir, f"episode_{episode_idx}/sponge_points.npy")
@@ -107,7 +166,7 @@ class GranularToolDynDataset(Dataset):
         self.physics_params = []
         for episode_idx in range(num_episodes):
             physics_path = self.physics_paths[episode_idx]
-            assert os.path.join(self.data_dir, f"episode_{episode_idx}/property.json") == physics_path
+            assert os.path.join(self.data_dir, f"episode_{episode_idx}/property_params.json") == physics_path
             with open(physics_path, "r") as f:
                 properties = json.load(f)
             
@@ -158,6 +217,7 @@ class GranularToolDynDataset(Dataset):
         for i in range(len(pair)):
             frame_idx = pair[i]
             obj_kp, static_tool_kp, dynamic_tool_kp = extract_kp_single_frame(self.data_dir, episode_idx, frame_idx)
+            # print(obj_kp.shape, static_tool_kp.shape, dynamic_tool_kp.shape)
             
             obj_kps.append(obj_kp)
             static_tool_kps.append(static_tool_kp)
@@ -192,6 +252,7 @@ class GranularToolDynDataset(Dataset):
         # get current state delta
         # eef kp = dynamic tool keypoints
         eef_kp = np.stack(dynamic_tool_kps[n_his-1:n_his+1], axis=0) # (2, 1, 3)
+        # print(eef_kp.shape)
         eef_kp_num = eef_kp.shape[1]
         # state_delta: (obj_points + static_tool_points + dynamic_tool_points, 3)
         states_delta = np.zeros((max_nobj + max_ntool * 2, obj_kp_start.shape[-1]), dtype=np.float32)
@@ -228,7 +289,7 @@ class GranularToolDynDataset(Dataset):
 
             eef_kp_his = dynamic_tool_kps[fi]
             eef_kp_his = pad(eef_kp_his, max_ntool)
-            state_history[fi, max_nobj:max_ntool] = eef_kp_his
+            state_history[fi, max_nobj : max_nobj + max_ntool] = eef_kp_his
         
         # load masks
         state_mask = np.zeros((max_nobj + max_ntool * 2), dtype=bool)

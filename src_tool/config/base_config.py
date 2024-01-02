@@ -16,15 +16,15 @@ parser.add_argument('--state_normalize', type=int, default=1)
 '''
 system and run config
 '''
-parser.add_argument('--data_dir', type=str, default='/mnt/sda/data/carrots_1')
+parser.add_argument('--data_dir', type=str, default='/mnt/sda/data/granular_sweeping_dustpan')
 parser.add_argument('--prep_save_dir', type=str, default='/mnt/sda/preprocess')
-parser.add_argument('--out_dir', type=str, default='/mnt/sda/logs/carrots_1_1')
+parser.add_argument('--out_dir', type=str, default='/mnt/sda/logs/granular_sweeping_dustpan')
 parser.add_argument('--adj_thresh_min', type=float, default=0.09)
 parser.add_argument('--adj_thresh_max', type=float, default=0.11)
 
 # evaluate
-parser.add_argument('--data_name', type=str, default='carrots_5')
-parser.add_argument('--checkpoint_name', type=str, default='carrots_5_5')
+parser.add_argument('--data_name', type=str, default='granular_sweeping_dustpan')
+parser.add_argument('--checkpoint_name', type=str, default='granular_sweeping_dustpan')
 parser.add_argument('--checkpoint_epoch', type=int, default=80) #100
 parser.add_argument('--adj_thresh', type=float, default=0.1)
 

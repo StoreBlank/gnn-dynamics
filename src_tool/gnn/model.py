@@ -84,6 +84,7 @@ class DynamicsPredictor(nn.Module):
         self.std_p = torch.FloatTensor(args.std_p).to(args.device)
         self.mean_d = torch.FloatTensor(args.mean_d).to(args.device)
         self.std_d = torch.FloatTensor(args.std_d).to(args.device)
+        self.motion_clamp = 100
         
         # Physics Encoder (TODO)
         self.physics_encoder = nn.Identity()

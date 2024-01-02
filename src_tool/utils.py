@@ -26,12 +26,12 @@ def extract_kp_single_frame(data_dir, episode_idx, frame_idx):
     # obtain static tool keypoints
     static_tool_ptcls = np.load(os.path.join(data_dir, f"episode_{episode_idx}/dustpan_points.npy"))
     static_tool_ptcl = static_tool_ptcls[frame_idx]
-    static_tool_kp = np.array([static_tool_ptcl])
+    static_tool_kp = np.array(static_tool_ptcl)
     
     # obtain dynamic tool keypoints
     dynamic_tool_ptcls = np.load(os.path.join(data_dir, f"episode_{episode_idx}/sponge_points.npy"))
     dynamic_tool_ptcl = dynamic_tool_ptcls[frame_idx]
-    dynamic_tool_kp = np.array([dynamic_tool_ptcl])
+    dynamic_tool_kp = np.array(dynamic_tool_ptcl)
     
     return obj_kp, static_tool_kp, dynamic_tool_kp
 
@@ -87,3 +87,11 @@ def quaternion_to_rotation_matrix(q):
                                 [r20, r21, r22]])
     
     return rotation_matrix
+
+def rgb_colormap(repeat=1):
+    base = np.asarray([
+        [0, 0, 255],
+        [0, 255, 0],
+        [255, 0, 0],
+    ])
+    return np.repeat(base, repeat, axis=0)
