@@ -52,13 +52,13 @@ def truncate_graph(data):
     data['Rs'] = data['Rs'][:, :max_n, :]
     return data
 
-def construct_relations(states, state_mask, eef_mask, adj_thresh_range=[0.1, 0.2], max_nR=500, adjacency=None):
+def construct_relations(states, state_mask, tool_mask, adj_thresh_range=[0.1, 0.2], max_nR=500, adjacency=None):
     # construct relations (density as hyperparameter)
     bsz = states.shape[0] # states: B, n_his, N, 3
     adj_thresh = np.random.uniform(*adj_thresh_range, (bsz,))
     
     Rr, Rs = construct_edges_from_states(states[:, -1], adj_thresh * 1.5,
-                                         mask=state_mask, eef_mask=eef_mask, no_self_edge=True)
+                                         mask=state_mask, tool_mask=tool_mask, no_self_edge=True)
     assert Rr[:, -1].sum() > 0
     Rr, Rs = Rr.detach(), Rs.detach()
     return Rr, Rs
@@ -129,7 +129,7 @@ def train(out_dir, data_dirs, prep_save_dir=None, material='carrots', ratios=Non
     
     ## set args TODO: understand the meaning of these args
     # particle encoder
-    args.attr_dim = 2
+    args.attr_dim = 2 # (obj, tool (dynamic_tool + static_tool) )
     args.n_his = n_his
     args.state_dim = 0 # abd (x, y, z) # not used in particle encoder and thus set to 0
     args.offset_dim = 0 # similar with the state_dim
@@ -204,18 +204,23 @@ def train(out_dir, data_dirs, prep_save_dir=None, material='carrots', ratios=Non
                     
                     future_state = data['state_future']  # (B, n_future, n_p, 3)
                     future_mask = data['state_future_mask']  # (B, n_future)
-                    future_eef = data['eef_future']  # (B, n_future-1, n_p+n_s, 3)
+                    future_tool = data['tool_future']  # (B, n_future-1, n_p+n_s, 3)
                     future_action = data['action_future']  # (B, n_future-1, n_p+n_s, 3)
                     
+                    # print(f"future_state: {future_state.shape}, future_mask: {future_mask.shape}")
+                    # print(f"future_tool: {future_tool.shape}, future_action: {future_action.shape}")
+                    
                     state_mask = data['state_mask']
-                    eef_mask = data['eef_mask']
+                    tool_mask = data['tool_mask']
+                    
+                    # print(f"state_mask: {state_mask.shape}, tool_mask: {tool_mask.shape}")
                     
                     for fi in range(n_future):
                         gt_state = future_state[:, fi].clone() # (B, n_p, 3)
                         gt_mask = future_mask[:, fi].clone() # (B,)
                         
                         # construct edges/relations
-                        data['Rr'], data['Rs'] = construct_relations(data['state'], state_mask, eef_mask,
+                        data['Rr'], data['Rs'] = construct_relations(data['state'], state_mask, tool_mask,
                                                                      adj_thresh_range=data_kwargs[phase]['adj_thresh_range'],)
                         # print(f"Rr: {data['Rr'].shape}, Rs: {data['Rs'].shape}")
                         # print(f"number of states: {data['state_future'].shape}")
@@ -229,9 +234,10 @@ def train(out_dir, data_dirs, prep_save_dir=None, material='carrots', ratios=Non
                         
                         if fi < n_future - 1:
                             # build next graph
-                            next_eef = future_eef[:, fi].clone() # (B, n_p+n_s, 3)
+                            next_tool = future_tool[:, fi].clone() # (B, n_p+n_s, 3)
                             next_action = future_action[:, fi].clone() # (B, n_p+n_s, 3)
-                            next_state = next_eef.unsqueeze(1) # (B, 1, n_p+n_s, 3)
+                            
+                            next_state = next_tool.unsqueeze(1) # (B, 1, n_p+n_s, 3)
                             next_state[:, -1, :pred_state_p.shape[1]] = pred_state_p # (B, 1, n_p+n_s, 3)
                             next_state = torch.cat([data['state'][:, 1:], next_state], dim=1) # (B, n_his, n_p+n_s, 3)
                             data["state"] = next_state # (B, n_his, N+M, state_dim)

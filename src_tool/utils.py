@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import cv2
 
 def extract_kp(data_dir, episode_idx, start_frame, end_frame):
     # obtain object keypoints
@@ -95,3 +96,24 @@ def rgb_colormap(repeat=1):
         [255, 0, 0],
     ])
     return np.repeat(base, repeat, axis=0)
+
+def vis_points(points, intr, extr, img, point_size=3, point_color=(0, 0, 255)):
+    # transform points
+    point_homo = np.concatenate([points, np.ones((points.shape[0], 1))], axis=1)
+    point_homo = point_homo @ extr.T 
+    
+    point_homo[:, 1] *= -1
+    point_homo[:, 2] *= -1
+    
+    # project points
+    fx, fy, cx, cy = intr
+    point_proj = np.zeros((point_homo.shape[0], 2))
+    point_proj[:, 0] = point_homo[:, 0] * fx / point_homo[:, 2] + cx
+    point_proj[:, 1] = point_homo[:, 1] * fy / point_homo[:, 2] + cy
+    
+    # visualize
+    for k in range(point_proj.shape[0]):
+        cv2.circle(img, (int(point_proj[k, 0]), int(point_proj[k, 1])), point_size,
+                   point_color, -1)
+    
+    return point_proj, img

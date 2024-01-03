@@ -39,6 +39,8 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
         
         # load info
         steps = np.load(os.path.join(data_dir, f"episode_{epi_idx}/steps.npy"))
+        steps = np.append(steps, num_frames)
+        
         # eef pos is corresponding to the sponge states (tool)
         eef_states = np.load(os.path.join(data_dir, f"episode_{epi_idx}/sponge_states.npy"))
         eef_pos = eef_states[:, :3]
@@ -59,7 +61,9 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
         
         # get start-end pairs
         frame_idxs = []
+        cnts = [0]
         cnt = 0
+        # print(f"steps: {steps}") # [0, 69, 138, 207, 276, 345]
         for fj in range(num_frames):
             curr_step = None
             for si in range(len(steps) - 1):
@@ -115,12 +119,13 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
                 cnt += 1
             
             frame_idxs.append(frame_traj)
-            
+
             # push_centered
             if fj == end_frame:
+                cnts.append(cnt)
                 frame_idxs = np.array(frame_idxs)
                 np.savetxt(os.path.join(frame_idx_dir, f"{epi_idx}_{curr_step}.txt"), frame_idxs, fmt="%d")
-                print(f"episode {epi_idx}, push {curr_step} has {cnt} pushes.")
+                print(f"episode {epi_idx}, push {curr_step} has {cnts[curr_step+1]-cnts[curr_step]} pushes.")
                 frame_idxs = []
     
     # save phys_params stat
@@ -208,9 +213,9 @@ if __name__ == "__main__":
             print("================extract_pushes================")
             extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
             print("==============================================")
-            print("================extract_tool_points================")
-            extract_tool_points(data_dir, tool_names, tool_scale)
-            print("==============================================")
+            # print("================extract_tool_points================")
+            # extract_tool_points(data_dir, tool_names, tool_scale)
+            # print("==============================================")
         # save metadata
         os.makedirs(save_dir, exist_ok=True)
         with open(os.path.join(save_dir, 'metadata.txt'), 'w') as f:

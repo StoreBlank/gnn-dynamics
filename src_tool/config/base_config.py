@@ -25,7 +25,7 @@ parser.add_argument('--adj_thresh_max', type=float, default=0.11)
 # evaluate
 parser.add_argument('--data_name', type=str, default='granular_sweeping_dustpan')
 parser.add_argument('--checkpoint_name', type=str, default='granular_sweeping_dustpan')
-parser.add_argument('--checkpoint_epoch', type=int, default=80) #100
+parser.add_argument('--checkpoint_epoch', type=int, default=10) #100
 parser.add_argument('--adj_thresh', type=float, default=0.1)
 
 parser.add_argument('--random_seed', type=int, default=42)
