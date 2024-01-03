@@ -3,8 +3,10 @@ import glob
 import json
 import numpy as np
 import open3d as o3d
+import torch
 
-from utils import quaternion_to_rotation_matrix
+from dgl.geometry import farthest_point_sampler
+from utils import quaternion_to_rotation_matrix, fps_rad_idx, pad
 
 """
 Preprocess data to save the following:
@@ -49,11 +51,11 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
         with open(physics_path, "r") as f:
             properties = json.load(f)
         phys_param = np.array([
-            properties['particle_radius'],
-            properties['num_particles'],
+            # properties['particle_radius'],
+            # properties['num_particles'],
             properties['granular_scale'],
-            properties['num_granular'],
-            properties['distribution_r'],
+            # properties['num_granular'],
+            # properties['distribution_r'],
             properties['dynamic_friction'],
             properties['granular_mass']
         ]).astype(np.float32)
@@ -136,7 +138,7 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
     print(f"phys_params_range: {phys_params_range}")
     np.savetxt(os.path.join(save_dir, "phys_range.txt"), phys_params_range)
     
-def extract_tool_points(data_dir, tool_names, tool_scale, tool_sampled_points=100):
+def extract_tool_points(data_dir, tool_names, tool_scale, tool_sample_points=100, max_ntool=100, vis=False):
     num_episodes = len(list(glob.glob(os.path.join(data_dir, f"episode_*"))))
     print(f"Preprocessing tool starts. Number of episodes: {num_episodes}")
     
@@ -155,15 +157,39 @@ def extract_tool_points(data_dir, tool_names, tool_scale, tool_sampled_points=10
             tool_mesh_path = os.path.join(tool_mesh_dir, f'{tool_names[i]}.obj')
             tool_mesh = o3d.io.read_triangle_mesh(tool_mesh_path)
             
-            tool_surface = o3d.geometry.TriangleMesh.sample_points_poisson_disk(tool_mesh, tool_sampled_points)
+            tool_surface = o3d.geometry.TriangleMesh.sample_points_poisson_disk(tool_mesh, 10000)
             # tool_surface = o3d.geometry.TriangleMesh.sample_points_uniformly(tool_mesh, sample_points)
+            if vis:
+                o3d.visualization.draw_geometries([tool_surface])
             
             # rescale the point cloud
             tool_surface.points = o3d.utility.Vector3dVector(np.asarray(tool_surface.points) * tool_scale[i])
-            tool_surface_points_list.append(tool_surface.points)
+            tool_surface_points = np.asarray(tool_surface.points)
+            
+            # fps sampling
+            particle_tensor = torch.from_numpy(tool_surface_points).float().unsqueeze(0)
+            fps_idx_tensor = farthest_point_sampler(particle_tensor, tool_sample_points)[0]
+            fps_idx_1 = fps_idx_tensor.numpy().astype(np.int32)
+            
+            # downsample to uniform radius
+            downsample_particle = particle_tensor[0, fps_idx_1, :].numpy()
+            fps_radius = 0.1
+            _, fps_idx_2 = fps_rad_idx(downsample_particle, fps_radius)
+            fps_idx_2 = fps_idx_2.astype(np.int32)
+            fps_idx = fps_idx_1[fps_idx_2]
+            print(f'tool {tool_names[i]} has {fps_idx.shape[0]} sample points.')
+            
+            # obtain fps tool surface points
+            tool_surface_points = tool_surface_points[fps_idx]
+            # pad to max_ntool
+            tool_surface_points = pad(tool_surface_points, max_ntool)
+            if vis:
+                o3d.visualization.draw_geometries([o3d.geometry.PointCloud(o3d.utility.Vector3dVector(tool_surface_points))])
+            
+            tool_surface_points_list.append(tool_surface_points)
         
         # obtain the tool points for each frame
-        all_tool_points = np.zeros((n_tools, num_frames, tool_sampled_points, 3))
+        all_tool_points = np.zeros((n_tools, num_frames, max_ntool, 3))
         for i in range(n_tools):
             tool_i_frame_points = []
             for frame_idx in range(num_frames):
@@ -210,12 +236,12 @@ if __name__ == "__main__":
     for data_dir, save_dir in zip(data_dir_list, save_dir_list):
         if os.path.isdir(data_dir):
             os.makedirs(save_dir, exist_ok=True)
-            print("================extract_pushes================")
-            extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
-            print("==============================================")
-            # print("================extract_tool_points================")
-            # extract_tool_points(data_dir, tool_names, tool_scale)
+            # print("================extract_pushes================")
+            # extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
             # print("==============================================")
+            print("================extract_tool_points================")
+            extract_tool_points(data_dir, tool_names, tool_scale)
+            print("==============================================")
         # save metadata
         os.makedirs(save_dir, exist_ok=True)
         with open(os.path.join(save_dir, 'metadata.txt'), 'w') as f:

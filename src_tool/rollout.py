@@ -38,7 +38,7 @@ def rollout(args, data_dir, prep_save_dir, save_dir, checkpoint, episode_idx, pu
     max_n = 1
     max_nobj = 100
     max_ntool = 100
-    max_nR = 1000 #500
+    max_nR = 1500 #500
 
     # load model
     ## set args
@@ -52,7 +52,7 @@ def rollout(args, data_dir, prep_save_dir, save_dir, checkpoint, episode_idx, pu
     args.time_step = 1
     args.dt = 1. / 60.
     args.sequence_length = 4
-    args.phys_dim = 2  # TODO
+    args.phys_dim = 3  
     args.density_dim = 0  # particle density
 
     # relation encoder
@@ -111,7 +111,7 @@ def rollout(args, data_dir, prep_save_dir, save_dir, checkpoint, episode_idx, pu
     
     # load physics
     physics_range = np.loadtxt(os.path.join(prep_save_dir, 'phys_range.txt')).astype(np.float32)
-    physics_range = physics_range[:, 2:4]
+    # physics_range = physics_range[:, 2:4]
     physics_path = os.path.join(data_dir, f"episode_{episode_idx}/property_params.json")
     assert os.path.join(data_dir, f"episode_{episode_idx}/property_params.json") == physics_path
     with open(physics_path) as f:
@@ -120,10 +120,10 @@ def rollout(args, data_dir, prep_save_dir, save_dir, checkpoint, episode_idx, pu
         # properties['particle_radius'],
         # properties['num_particles'],
         properties['granular_scale'],
-        properties['num_granular'],
+        # properties['num_granular'],
         # properties['distribution_r'],
-        # properties['dynamic_friction'],
-        # properties['granular_mass']
+        properties['dynamic_friction'],
+        properties['granular_mass']
     ]).astype(np.float32)
     physics_param = (physics_param - physics_range[0]) / (physics_range[1] - physics_range[0] + 1e-6)  # normalize
 
@@ -612,7 +612,7 @@ def rollout(args, data_dir, prep_save_dir, save_dir, checkpoint, episode_idx, pu
 def rollout_vis(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, prep_save_dir):
     args = gen_args()
 
-    episode_idx = 24
+    episode_idx = 25
     # push_idx = 1
     start_idx = 0
     rollout_steps = 300
@@ -702,4 +702,4 @@ if __name__ == "__main__":
     checkpoint = f"/mnt/sda/logs/{checkpoint_dir_name}/checkpoints/latest.pth"
     prep_save_dir = f"/mnt/sda/preprocess/{data_name}"
     rollout_vis(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, prep_save_dir)
-    rollout_eval(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, prep_save_dir)
+    # rollout_eval(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, prep_save_dir)

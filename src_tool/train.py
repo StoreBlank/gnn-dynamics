@@ -138,7 +138,7 @@ def train(out_dir, data_dirs, prep_save_dir=None, material='carrots', ratios=Non
     args.time_step = 1
     args.dt = 1. / 60.
     args.sequence_length = 4
-    args.phys_dim = 2
+    args.phys_dim = 3
     args.density_dim = 0
     
     # relation encoder

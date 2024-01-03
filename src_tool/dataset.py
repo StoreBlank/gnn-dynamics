@@ -56,7 +56,7 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
         adj_matrix = adj_matrix * (1 - self_edge_mask)
 
     # add topk constraints
-    topk = 5
+    topk = 20
     topk_idx = torch.topk(dis, k=topk, dim=-1, largest=False)[1]
     topk_matrix = torch.zeros_like(adj_matrix)
     topk_matrix.scatter_(-1, topk_idx, 1)
@@ -177,7 +177,7 @@ class GranularToolDynDataset(Dataset):
         
         # load phys_params 
         physics_range = np.loadtxt(os.path.join(save_dir, 'phys_range.txt')).astype(np.float32)
-        physics_range = physics_range[:, 2:4]
+        # physics_range = physics_range[:, 2:4]
         self.physics_params = []
         for episode_idx in range(num_episodes):
             physics_path = self.physics_paths[episode_idx]
@@ -189,10 +189,10 @@ class GranularToolDynDataset(Dataset):
                 # properties['particle_radius'],
                 # properties['num_particles'],
                 properties['granular_scale'],
-                properties['num_granular'],
+                # properties['num_granular'],
                 # properties['distribution_r'],
-                # properties['dynamic_friction'],
-                # properties['granular_mass']
+                properties['dynamic_friction'],
+                properties['granular_mass']
             ]).astype(np.float32)
             
             physics_param = (physics_param - physics_range[0]) / (physics_range[1] - physics_range[0] + 1e-6)  # normalize
