@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 
 from gnn.model import DynamicsPredictor
 from gnn.utils import set_seed, umeyama_algorithm
-from dataset import DynDataset
+from dataset import DynDataset, construct_edges_from_states
 
 def dataloader_wrapper(dataloader, name):
     cnt = 0
@@ -52,6 +52,17 @@ def truncate_graph(data):
     data['Rr'] = data['Rr'][:, :max_n, :]
     data['Rs'] = data['Rs'][:, :max_n, :]
     return data
+
+def construct_relations(states, state_mask, tool_mask, adj_thresh_range=[0.1, 0.2], max_nR=500, adjacency=None):
+    # construct relations (density as hyperparameter)
+    bsz = states.shape[0] # states: B, n_his, N, 3
+    adj_thresh = np.random.uniform(*adj_thresh_range, (bsz,))
+    
+    Rr, Rs = construct_edges_from_states(states[:, -1], adj_thresh,
+                                         mask=state_mask, tool_mask=tool_mask, no_self_edge=True)
+    assert Rr[:, -1].sum() > 0
+    Rr, Rs = Rr.detach(), Rs.detach()
+    return Rr, Rs
 
 
 def train(config):
@@ -119,8 +130,8 @@ def train(config):
                     # print(f"future_state: {future_state.shape}, future_mask: {future_mask.shape}")
                     # print(f"future_tool: {future_tool.shape}, future_action: {future_action.shape}")
                     
-                    # state_mask = data['state_mask']
-                    # tool_mask = data['tool_mask']
+                    state_mask = data['state_mask']
+                    tool_mask = data['tool_mask']
                     
                     # print(f"state_mask: {state_mask.shape}, tool_mask: {tool_mask.shape}")
                     
@@ -129,8 +140,8 @@ def train(config):
                         # gt_mask = future_mask[:, fi].clone() # (B,)
                         
                         # construct edges/relations
-                        # data['Rr'], data['Rs'] = construct_relations(data['state'], state_mask, tool_mask,
-                        #                                              adj_thresh_range=data_kwargs[phase]['adj_thresh_range'],)
+                        data['Rr'], data['Rs'] = construct_relations(data['state'], state_mask, tool_mask,
+                                            adj_thresh_range=dataset_config['datasets'][0]['adj_radius_range'],)
                         # print(f"Rr: {data['Rr'].shape}, Rs: {data['Rs'].shape}")
                         # print(f"number of states: {data['state_future'].shape}")
                         

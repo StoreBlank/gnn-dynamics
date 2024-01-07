@@ -32,7 +32,7 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
         adj_thresh = torch.tensor(adj_thresh, device=states.device, dtype=states.dtype).repeat(B)
     threshold = adj_thresh * adj_thresh
     # convert threshold to tensor
-    # threshold = torch.tensor(threshold, device=states.device, dtype=states.dtype)
+    threshold = torch.tensor(threshold, device=states.device, dtype=states.dtype)
     
     dis = torch.sum((s_sender - s_receiv)**2, -1)
     mask_1 = mask[:, :, None].repeat(1, 1, N)
@@ -179,6 +179,8 @@ class DynDataset(Dataset):
         dataset_idx = self.pair_lists[i][0].astype(int)
         episode_idx = self.pair_lists[i][1].astype(int)
         pair = self.pair_lists[i][2:].astype(int)
+        
+        assert dataset_idx == 0, 'only support single dataset'
         
         n_his = self.dataset_config['n_his']
         n_future = self.dataset_config['n_future']
@@ -361,30 +363,30 @@ class DynDataset(Dataset):
         # obj_kp_future += random_translation[None, None]
         
         # numpy to torch
-        state_history = torch.from_numpy(state_history).float()
-        states_delta = torch.from_numpy(states_delta).float()
-        tool_future = torch.from_numpy(tool_future).float()
-        states_delta_future = torch.from_numpy(states_delta_future).float()
-        obj_kp_future = torch.from_numpy(obj_kp_future).float()
-        # obj_future_mask = torch.from_numpy(obj_future_mask)
-        attrs = torch.from_numpy(attrs).float()
-        p_rigid = torch.from_numpy(p_rigid).float()
-        p_instance = torch.from_numpy(p_instance).float()
-        physics_param = {k: torch.from_numpy(v).float() for k, v in physics_param.items()}
-        material_idx = torch.from_numpy(material_idx).long()
-        state_mask = torch.from_numpy(state_mask)
-        tool_mask = torch.from_numpy(tool_mask)
-        obj_mask = torch.from_numpy(obj_mask)
+        # state_history = torch.from_numpy(state_history).float()
+        # states_delta = torch.from_numpy(states_delta).float()
+        # tool_future = torch.from_numpy(tool_future).float()
+        # states_delta_future = torch.from_numpy(states_delta_future).float()
+        # obj_kp_future = torch.from_numpy(obj_kp_future).float()
+        # # obj_future_mask = torch.from_numpy(obj_future_mask)
+        # attrs = torch.from_numpy(attrs).float()
+        # p_rigid = torch.from_numpy(p_rigid).float()
+        # p_instance = torch.from_numpy(p_instance).float()
+        # physics_param = {k: torch.from_numpy(v).float() for k, v in physics_param.items()}
+        # material_idx = torch.from_numpy(material_idx).long()
+        # state_mask = torch.from_numpy(state_mask)
+        # tool_mask = torch.from_numpy(tool_mask)
+        # obj_mask = torch.from_numpy(obj_mask)
 
         # construct edges
-        adj_thresh = np.random.uniform(*adj_radius_range)
-        adj_thresh = torch.tensor([adj_thresh], device=state_history.device, dtype=state_history.dtype)
-        Rr, Rs = construct_edges_from_states(state_history[-1][None], adj_thresh, 
-                    mask=state_mask[None], tool_mask=tool_mask[None], no_self_edge=True)
-        Rr = Rr[0]
-        Rs = Rs[0]
-        Rr = pad_torch(Rr, max_nR)
-        Rs = pad_torch(Rs, max_nR)
+        # adj_thresh = np.random.uniform(*adj_radius_range)
+        # adj_thresh = torch.tensor([adj_thresh], device=state_history.device, dtype=state_history.dtype)
+        # Rr, Rs = construct_edges_from_states(state_history[-1][None], adj_thresh, 
+        #             mask=state_mask[None], tool_mask=tool_mask[None], no_self_edge=True)
+        # Rr = Rr[0]
+        # Rs = Rs[0]
+        # Rr = pad_torch(Rr, max_nR)
+        # Rs = pad_torch(Rs, max_nR)
 
         # save graph
         graph = {
@@ -397,8 +399,8 @@ class DynDataset(Dataset):
             "tool_future": tool_future, # (n_future-1, N+2M, state_dim)
             "action_future": states_delta_future, # (n_future-1, N+2M, state_dim)
             
-            "Rr": Rr, # (n_rel, N)
-            "Rs": Rs, # (n_rel, N)
+            # "Rr": Rr, # (n_rel, N)
+            # "Rs": Rs, # (n_rel, N)
             
             # gt info
             "state_future": obj_kp_future, # (n_future, N, state_dim)
@@ -409,8 +411,8 @@ class DynDataset(Dataset):
             "p_rigid": p_rigid, # (n_instance, )
             "p_instance": p_instance, # (N, n_instance)
             # "physics_param": physics_param, # (N, phys_dim)
-            # "state_mask": state_mask, # (N+2M, )
-            # "tool_mask": tool_mask, # (N+2M, )
+            "state_mask": state_mask, # (N+2M, )
+            "tool_mask": tool_mask, # (N+2M, )
             "obj_mask": obj_mask, # (N, )
         }
 
