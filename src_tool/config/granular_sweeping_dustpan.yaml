@@ -1,0 +1,104 @@
+train_config:
+  out_dir: "/mnt/sda/logs/granular_sweeping_dustpan"
+  phases: ["train", "valid"]
+  batch_size: 128
+  n_epochs: 1000
+  n_iters_per_epoch:
+    train: 1000
+    valid: 100
+  log_interval: 50
+  random_seed: 42
+  n_his: 4
+  n_future: 3
+
+model_config:
+  verbose: False
+
+  nf_particle: 150
+  nf_relation: 150
+  nf_effect: 150
+
+  nf_physics_hidden: 20
+  nf_physics: 10
+
+  # particle encoder
+  attr_dim: 2  # object and end effector
+  state_dim: 0  # x, y, z
+  offset_dim: 0
+  action_dim: 3
+  pstep: 3
+  sequence_length: 4
+  density_dim: 0  # particle density
+
+  # rel encoder
+  rel_particle_dim: 0
+  rel_attr_dim: 2
+  rel_group_dim: 1  # sum of difference of group one-hot vector
+  rel_distance_dim: 3
+  rel_density_dim: 0
+
+  # canonical
+  # rel_can_attr_dim: 0
+  # rel_canonical_distance_dim: 0
+  # rel_canonical_attr_dim: 0
+  # rel_canonical_thresh: 0
+
+  # phys encoding
+  use_vae: False
+  phys_encode: False
+
+dataset_config:
+  datasets:
+    - name: "granular_sweeping_dustpan"
+      materials: ["granular"]
+      data_dir: "/mnt/sda/data/granular_sweeping_dustpan"
+      prep_data_dir: "/mnt/sda/preprocess/granular_sweeping_dustpan"
+      fps_radius_range: [0.09, 0.11]
+      adj_radius_range: [0.09, 0.11]
+      state_noise: 
+        train: 0.02
+        valid: 0.0
+      phys_noise: 
+        train: 0.0
+        valid: 0.0
+      ratio: 
+        train: [0, 0.9]
+        valid: [0.9, 1]
+      max_n: 1
+      max_nobj: 100
+      max_ntool: 100
+      max_nR: 500
+
+material_config:
+  material_index:
+    granular: 0
+  granular:
+    physics_params: 
+      - name: "particle_radius"
+        use: False
+        min: 0.
+        max: 1.
+      - name: "num_particles"
+        use: False
+        min: 0.
+        max: 5000.
+      - name: "rand_scale"
+        use: False
+        min: 0.05
+        max: 0.15
+      - name: "blob_r"
+        use: True
+        min: 0.
+        max: 1.
+      - name: "num_carrots"
+        use: False
+        min: 0.
+        max: 200.
+      - name: "dynamic_friction"
+        use: True
+        min: 2.
+        max: 8.
+      - name: "mass"
+        use: True
+        min: 0.
+        max: 1.
