@@ -702,4 +702,4 @@ if __name__ == "__main__":
     checkpoint = f"/mnt/sda/logs/{checkpoint_dir_name}/checkpoints/latest.pth"
     prep_save_dir = f"/mnt/sda/preprocess/{data_name}"
     rollout_vis(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, prep_save_dir)
-    # rollout_eval(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, prep_save_dir)
+    rollout_eval(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, prep_save_dir)
