@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import cv2
+import torch
 
 def extract_kp(data_dir, episode_idx, start_frame, end_frame):
     # obtain object keypoints
@@ -60,6 +61,17 @@ def pad(x, max_dim, dim=0):
     elif dim == 1:
         x_dim = x.shape[1]
         x_pad = np.zeros((x.shape[0], max_dim, x.shape[2]), dtype=np.float32)
+        x_pad[:, :x_dim] = x
+    return x_pad
+
+def pad_torch(x, max_dim, dim=0):
+    if dim == 0:
+        x_dim = x.shape[0]
+        x_pad = torch.zeros((max_dim, x.shape[1]), dtype=x.dtype, device=x.device)
+        x_pad[:x_dim] = x
+    elif dim == 1:
+        x_dim = x.shape[1]
+        x_pad = torch.zeros((x.shape[0], max_dim, x.shape[2]), dtype=x.dtype, device=x.device)
         x_pad[:, :x_dim] = x
     return x_pad
 
