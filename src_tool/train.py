@@ -16,7 +16,6 @@ import torchvision.transforms as transforms
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from config.base_config import gen_args
 from gnn.model import DynamicsPredictor
 from gnn.utils import set_seed, umeyama_algorithm
 from dataset import DynDataset
@@ -79,7 +78,7 @@ def train(config):
         datasets[phase],
         batch_size=train_config['batch_size'],
         shuffle=(phase == 'train'),
-        num_workers=8,
+        num_workers=1,
     ) for phase in phases}
     dataloaders = {phase: dataloader_wrapper(dataloaders[phase], phase) for phase in phases}
 

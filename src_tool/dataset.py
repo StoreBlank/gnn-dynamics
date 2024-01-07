@@ -14,7 +14,7 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
     # :param states: (B, N+2M, state_dim) torch tensor
     # :param adj_thresh: (B, ) torch tensor
     # :param mask: (B, N+2M) torch tensor, true when index is a valid particle
-    # :param eef_mask: (B, N+2M) torch tensor, true when index is a valid tool particle
+    # :param tool_mask: (B, N+2M) torch tensor, true when index is a valid tool particle
     
     # :return:
     # - Rr: (B, n_rel, N) torch tensor
@@ -32,7 +32,7 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
         adj_thresh = torch.tensor(adj_thresh, device=states.device, dtype=states.dtype).repeat(B)
     threshold = adj_thresh * adj_thresh
     # convert threshold to tensor
-    threshold = torch.tensor(threshold, device=states.device, dtype=states.dtype)
+    # threshold = torch.tensor(threshold, device=states.device, dtype=states.dtype)
     
     dis = torch.sum((s_sender - s_receiv)**2, -1)
     mask_1 = mask[:, :, None].repeat(1, 1, N)
@@ -115,7 +115,7 @@ def load_dataset(dataset, material_config, phase='train'):
 
     physics_params = []
     for episode_idx in range(num_episodes):
-        physics_path = os.path.join(data_dir, f"episode_{episode_idx}/property.json")
+        physics_path = os.path.join(data_dir, f"episode_{episode_idx}/property_params.json")
         with open(physics_path) as f:
             properties = json.load(f)
         
@@ -135,7 +135,7 @@ def load_dataset(dataset, material_config, phase='train'):
             physics_params_episode[material_name] = used_params
         physics_params.append(physics_params_episode)
 
-    return pair_lists, physics_params  # obj_kypts_paths, eef_kypts_paths, 
+    return pair_lists, physics_params  
 
 class DynDataset(Dataset):
     def __init__(
@@ -363,7 +363,7 @@ class DynDataset(Dataset):
         # numpy to torch
         state_history = torch.from_numpy(state_history).float()
         states_delta = torch.from_numpy(states_delta).float()
-        eef_future = torch.from_numpy(eef_future).float()
+        tool_future = torch.from_numpy(tool_future).float()
         states_delta_future = torch.from_numpy(states_delta_future).float()
         obj_kp_future = torch.from_numpy(obj_kp_future).float()
         # obj_future_mask = torch.from_numpy(obj_future_mask)
@@ -373,14 +373,14 @@ class DynDataset(Dataset):
         physics_param = {k: torch.from_numpy(v).float() for k, v in physics_param.items()}
         material_idx = torch.from_numpy(material_idx).long()
         state_mask = torch.from_numpy(state_mask)
-        eef_mask = torch.from_numpy(eef_mask)
+        tool_mask = torch.from_numpy(tool_mask)
         obj_mask = torch.from_numpy(obj_mask)
 
         # construct edges
         adj_thresh = np.random.uniform(*adj_radius_range)
         adj_thresh = torch.tensor([adj_thresh], device=state_history.device, dtype=state_history.dtype)
         Rr, Rs = construct_edges_from_states(state_history[-1][None], adj_thresh, 
-                    mask=state_mask[None], eef_mask=eef_mask[None], no_self_edge=True)
+                    mask=state_mask[None], tool_mask=tool_mask[None], no_self_edge=True)
         Rr = Rr[0]
         Rs = Rs[0]
         Rr = pad_torch(Rr, max_nR)
@@ -396,6 +396,9 @@ class DynDataset(Dataset):
             # future info
             "tool_future": tool_future, # (n_future-1, N+2M, state_dim)
             "action_future": states_delta_future, # (n_future-1, N+2M, state_dim)
+            
+            "Rr": Rr, # (n_rel, N)
+            "Rs": Rs, # (n_rel, N)
             
             # gt info
             "state_future": obj_kp_future, # (n_future, N, state_dim)
