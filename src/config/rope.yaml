@@ -1,8 +1,8 @@
 train_config:
   out_dir: "/mnt/sda/logs/rope"
   phases: ["train", "valid"]
-  batch_size: 64
-  n_epochs: 10
+  batch_size: 128
+  n_epochs: 100
   n_iters_per_epoch:
     train: 250
     valid: 25

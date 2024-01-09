@@ -57,7 +57,7 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
         adj_matrix = adj_matrix * (1 - self_edge_mask)
 
     # add topk constraints
-    topk = 20
+    topk = 20 #TODO: hyperparameter
     topk_idx = torch.topk(dis, k=topk, dim=-1, largest=False)[1]
     topk_matrix = torch.zeros_like(adj_matrix)
     topk_matrix.scatter_(-1, topk_idx, 1)
@@ -202,8 +202,7 @@ class DynDataset(Dataset):
         for i in range(len(pair)):
             frame_idx = pair[i]
             # obj_kp: (1, num_obj_points, 3)
-            # tool_kp: (num_tool_points, 3)
-            # print(f"episode_idx: {episode_idx}, pair: {i}")
+            # tool_kp: (1, num_tool_points, 3)
             obj_kp, tool_kp = extract_kp_single_frame(dataset_config['data_dir'], episode_idx, frame_idx)
             # print(obj_kp.shape, tool_kp.shape) 
             
@@ -217,6 +216,7 @@ class DynDataset(Dataset):
         fps_idx_list = []
         
         # old sampling using raw particles
+        # TODO: change it to preprocessing?
         for j in range(len(obj_kp_start)):
             # farthers point sampling
             particle_tensor = torch.from_numpy(obj_kp_start[j]).float()[None, ...] # convert the first dim to None
