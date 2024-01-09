@@ -1,5 +1,5 @@
 train_config:
-  out_dir: "/mnt/sda/logs/granular_sweeping_dustpan"
+  out_dir: "/mnt/sda/logs/rope"
   phases: ["train", "valid"]
   batch_size: 64
   n_epochs: 10
@@ -49,10 +49,10 @@ model_config:
 
 dataset_config:
   datasets:
-    - name: "granular_sweeping_dustpan"
-      materials: ["granular"]
-      data_dir: "/mnt/sda/data/granular_sweeping_dustpan"
-      prep_data_dir: "/mnt/sda/preprocess/granular_sweeping_dustpan"
+    - name: "rope"
+      materials: ["rope"]
+      data_dir: "/mnt/sda/data/rope"
+      prep_data_dir: "/mnt/sda/preprocess/rope"
       fps_radius_range: [0.09, 0.11]
       adj_radius_range: [0.14, 0.16]
       state_noise: 
@@ -65,14 +65,15 @@ dataset_config:
         train: [0, 0.9]
         valid: [0.9, 1]
       max_n: 1
+      max_tool: 1
       max_nobj: 100
       max_ntool: 100
       max_nR: 500
 
 material_config:
   material_index:
-    granular: 0
-  granular:
+    rope: 0
+  rope:
     physics_params: 
       - name: "particle_radius"
         use: False
@@ -82,23 +83,19 @@ material_config:
         use: False
         min: 0.
         max: 5000.
-      - name: "granular_scale"
+      - name: "length"
         use: True
-        min: 0.05
-        max: 0.15
-      - name: "num_granular"
-        use: False
-        min: 0.
-        max: 200.
-      - name: "distribution_r"
-        use: False
-        min: 0.
-        max: 1.
+        min: 2.5
+        max: 5.0
+      - name: "thickness"
+        use: True
+        min: 2.5
+        max: 4.0
       - name: "dynamic_friction"
         use: True
-        min: 2.
-        max: 8.
-      - name: "granular_mass"
+        min: 0.1
+        max: 0.45
+      - name: "cluster_spacing"
         use: True
-        min: 0.
-        max: 1.
+        min: 2.0
+        max: 12.0

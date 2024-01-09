@@ -18,11 +18,12 @@ import cv2
 import glob
 from dgl.geometry import farthest_point_sampler
 
-from dataset.dataset_carrots import construct_edges_from_states, pad
-from dataset.utils import extract_kp_single_frame, rgb_colormap, fps_rad_idx
-from train_carrots import truncate_graph
+from dataset import construct_edges_from_states
+from utils import extract_kp_single_frame, rgb_colormap, fps_rad_idx, pad, vis_points
+from train import truncate_graph
 
-def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode_idx, push_idx, start_idx, rollout_steps, colormap=None, vis=False, evaluate=False):
+def rollout(args, data_dir, prep_save_dir, save_dir, checkpoint, episode_idx, push_idx, 
+                    start_idx, rollout_steps, colormap=None, vis=False, evaluate=False):
     set_seed(args.random_seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     args.device = device
@@ -36,8 +37,8 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
     fps_radius = 0.10
     max_n = 1
     max_nobj = 100
-    max_neef = 1
-    max_nR = 500
+    max_ntool = 100
+    max_nR = 1500 #500
 
     # load model
     ## set args
@@ -51,7 +52,7 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
     args.time_step = 1
     args.dt = 1. / 60.
     args.sequence_length = 4
-    args.phys_dim = 2  # TODO
+    args.phys_dim = 3  
     args.density_dim = 0  # particle density
 
     # relation encoder
@@ -65,7 +66,6 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
     args.rel_canonical_distance_dim = 0
     args.rel_canonical_attr_dim = 0
     args.rel_canonical_thresh = 3 * adj_thresh
-
     args.rel_can_attr_dim = 0
 
     args.use_vae = False
@@ -81,7 +81,7 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
     })
     # args.use_rigid_loss = False
 
-    model = DynamicsPredictor(args, verbose=True, **model_kwargs)
+    model = DynamicsPredictor(args, verbose=False, **model_kwargs)
     model.to(device)
     model.eval()
     model.load_state_dict(torch.load(checkpoint))
@@ -105,23 +105,25 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
     # load kypts
     n_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{episode_idx}/camera_0/*_color.jpg"))))
     obj_kypts_paths = os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy")
-    eef_kypts_paths = os.path.join(data_dir, f"episode_{episode_idx}/eef_pos.npy")
-
+    
+    dynamic_tool_kypts_paths = os.path.join(data_dir, f"episode_{episode_idx}/sponge_points.npy")
+    static_tool_kypts_paths = os.path.join(data_dir, f"episode_{episode_idx}/dustpan_points.npy")
+    
     # load physics
     physics_range = np.loadtxt(os.path.join(prep_save_dir, 'phys_range.txt')).astype(np.float32)
-    physics_range = physics_range[:, 2:4]
-    physics_path = os.path.join(data_dir, f"episode_{episode_idx}/property.json")
-    assert os.path.join(data_dir, f"episode_{episode_idx}/property.json") == physics_path
+    # physics_range = physics_range[:, 2:4]
+    physics_path = os.path.join(data_dir, f"episode_{episode_idx}/property_params.json")
+    assert os.path.join(data_dir, f"episode_{episode_idx}/property_params.json") == physics_path
     with open(physics_path) as f:
         properties = json.load(f)
     physics_param = np.array([
         # properties['particle_radius'],
         # properties['num_particles'],
         properties['granular_scale'],
-        properties['num_granular'],
+        # properties['num_granular'],
         # properties['distribution_r'],
-        # properties['dynamic_friction'],
-        # properties['granular_mass']
+        properties['dynamic_friction'],
+        properties['granular_mass']
     ]).astype(np.float32)
     physics_param = (physics_param - physics_range[0]) / (physics_range[1] - physics_range[0] + 1e-6)  # normalize
 
@@ -141,15 +143,20 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
     start = pair[n_his-1]
     end = pair[n_his]
 
-    # get history keypoints
-    obj_kps = []
-    eef_kps = []
-    for i in range(n_his+1):
+     # get history keypoints
+    obj_kps, static_tool_kps, dynamic_tool_kps = [], [], []
+    for i in range(len(pair)):
         frame_idx = pair[i]
-        obj_kp, eef_kp = extract_kp_single_frame(data_dir, episode_idx, frame_idx)
+        # obj_kp: (1, num_obj_points, 3)
+        # static_tool_kp: (num_static_tool_points, 3)
+        # dynamic_tool_kp: (num_dynamic_tool_points, 3)
+        obj_kp, static_tool_kp, dynamic_tool_kp = extract_kp_single_frame(data_dir, episode_idx, frame_idx)
+        # print(obj_kp.shape, static_tool_kp.shape, dynamic_tool_kp.shape) 
+        
         obj_kps.append(obj_kp)
-        eef_kps.append(eef_kp)
-
+        static_tool_kps.append(static_tool_kp)
+        dynamic_tool_kps.append(dynamic_tool_kp)
+    
     obj_kp_start = obj_kps[n_his-1]
     instance_num = len(obj_kp_start)
     assert instance_num == 1, 'only support single object'
@@ -175,34 +182,47 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
     obj_kp_start = np.concatenate(obj_kp_start, axis=0) # (N, 3)
     obj_kp_num = obj_kp_start.shape[0]
 
-    # load history states
-    state_history = np.zeros((n_his, max_nobj + max_neef, obj_kp_start.shape[-1]), dtype=np.float32)
+     # load history states
+    state_history = np.zeros((n_his, max_nobj + max_ntool * 2, 3), dtype=np.float32)
     for fi in range(n_his):
+        # object 
         obj_kp_his = obj_kps[fi]
         obj_kp_his = [obj_kp_his[j][fps_idx] for j, fps_idx in enumerate(fps_idx_list)]
         obj_kp_his = np.concatenate(obj_kp_his, axis=0)
         obj_kp_his = pad(obj_kp_his, max_nobj)
         state_history[fi, :max_nobj] = obj_kp_his
-
-        eef_kp_his = eef_kps[fi]
-        eef_kp_his = pad(eef_kp_his, max_neef)
-        state_history[fi, max_nobj:] = eef_kp_his
-
+        
+        # dynamic tool
+        dynamic_tool_kp_his = dynamic_tool_kps[fi]
+        dynamic_tool_kp_his = pad(dynamic_tool_kp_his, max_ntool)
+        state_history[fi, max_nobj : max_nobj + max_ntool] = dynamic_tool_kp_his
+        
+        # static tool
+        static_tool_kp_his = static_tool_kps[fi]
+        static_tool_kp_his = pad(static_tool_kp_his, max_ntool)
+        state_history[fi, max_nobj + max_ntool : max_nobj + max_ntool * 2] = static_tool_kp_his
+    
     # get current state delta
-    eef_kp = np.stack(eef_kps[n_his-1:n_his+1], axis=0)  # (2, 1, 3)
-    eef_kp_num = eef_kp.shape[1]
-    states_delta = np.zeros((max_nobj + max_neef, obj_kp_start.shape[-1]), dtype=np.float32)
-    states_delta[max_nobj : max_nobj + eef_kp_num] = eef_kp[1] - eef_kp[0]
+    static_tool_kp = np.stack(static_tool_kps[n_his-1:n_his+1], axis=0) 
+    dynamic_tool_kp = np.stack(dynamic_tool_kps[n_his-1:n_his+1], axis=0)
+    static_tool_kp_num, dynamic_tool_kp_num = static_tool_kp.shape[1], dynamic_tool_kp.shape[1]
+    
+    states_delta = np.zeros((max_nobj + max_ntool * 2, 3), dtype=np.float32)
+    states_delta[max_nobj : max_nobj + dynamic_tool_kp_num] = dynamic_tool_kp[1] - dynamic_tool_kp[0]
+    assert (static_tool_kp[1] == static_tool_kp[0]).all(), 'static tool should be static'
 
-    state_mask = np.zeros((max_nobj + max_neef), dtype=bool)
-    state_mask[max_nobj : max_nobj + eef_kp_num] = True
-    state_mask[:obj_kp_num] = True
-
-    eef_mask = np.zeros((max_nobj + max_neef), dtype=bool)
-    eef_mask[max_nobj : max_nobj + eef_kp_num] = True
-
+    # get masks
+    state_mask = np.zeros((max_nobj + max_ntool * 2), dtype=bool)
+    state_mask[:obj_kp_num] = True # obj
+    state_mask[max_nobj : max_nobj + dynamic_tool_kp_num] = True # dynamic tool
+    state_mask[max_nobj + max_ntool : max_nobj + max_ntool + static_tool_kp_num] = True # static tool
+    
     obj_mask = np.zeros((max_nobj,), dtype=bool)
     obj_mask[:obj_kp_num] = True
+    
+    tool_mask = np.zeros((max_nobj + max_ntool * 2,), dtype=bool)
+    tool_mask[max_nobj : max_nobj + dynamic_tool_kp_num] = True # dynamic tool
+    tool_mask[max_nobj + max_ntool : max_nobj + max_ntool + static_tool_kp_num] = True # static tool
 
     # construct instance information
     p_rigid = np.zeros(max_n, dtype=np.float32)  # carrots are nonrigid
@@ -222,20 +242,21 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
     # construct attributes
     attr_dim = 2
     assert attr_dim == args.attr_dim
-    attrs = np.zeros((max_nobj + max_neef, attr_dim), dtype=np.float32)
+    attrs = np.zeros((max_nobj + max_ntool * 2, attr_dim), dtype=np.float32)
     attrs[:obj_kp_num, 0] = 1.
-    attrs[max_nobj : max_nobj + eef_kp_num, 1] = 1.
+    attrs[max_nobj : max_nobj + dynamic_tool_kp_num, 1] = 1.
+    attrs[max_nobj + max_ntool : max_nobj + max_ntool + static_tool_kp_num, 1] = 1.
 
     # construct relations (density as hyperparameter)
     Rr, Rs = construct_edges_from_states(torch.tensor(state_history[-1]).unsqueeze(0), adj_thresh * 1.5, 
                                         mask=torch.tensor(state_mask).unsqueeze(0), 
-                                        eef_mask=torch.tensor(eef_mask).unsqueeze(0),
+                                        tool_mask=torch.tensor(tool_mask).unsqueeze(0),
                                         no_self_edge=True)
     Rr, Rs = Rr.squeeze(0).numpy(), Rs.squeeze(0).numpy()
 
-    # action encoded as state_delta (only stored in eef keypoints)
-    states_delta = np.zeros((max_nobj + max_neef, obj_kp_start.shape[-1]), dtype=np.float32)
-    states_delta[max_nobj : max_nobj + eef_kp_num] = eef_kp[1] - eef_kp[0]
+    # action encoded as state_delta (only stored in tool keypoints)
+    states_delta = np.zeros((max_nobj + max_ntool * 2, 3), dtype=np.float32)
+    states_delta[max_nobj : max_nobj + dynamic_tool_kp_num] = dynamic_tool_kp[1] - dynamic_tool_kp[0]
 
     Rr = np.pad(Rr, ((0, max_nR - Rr.shape[0]), (0, 0)), mode='constant')
     Rs = np.pad(Rs, ((0, max_nR - Rs.shape[0]), (0, 0)), mode='constant')
@@ -243,20 +264,20 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
     # save graph
     graph = {
         # input information
-        "state": state_history,  # (n_his, N+M, state_dim)
-        "action": states_delta,  # (N+M, state_dim)
+        "state": state_history,  # (n_his, N+2M, state_dim)
+        "action": states_delta,  # (N+2M, state_dim)
 
         # relation information
-        "Rr": Rr,  # (n_rel, N+M)
-        "Rs": Rs,  # (n_rel, N+M)
+        "Rr": Rr,  # (n_rel, N+2M)
+        "Rs": Rs,  # (n_rel, N+2M)
 
         # attr information
-        "attrs": attrs,  # (N+M, attr_dim)
+        "attrs": attrs,  # (N+2M, attr_dim)
         "p_rigid": p_rigid,  # (n_instance,)
         "p_instance": p_instance,  # (N, n_instance)
         "physics_param": physics_param,  # (N, phys_dim)
-        "state_mask": state_mask,  # (N+M,)
-        "eef_mask": eef_mask,  # (N+M,)
+        "state_mask": state_mask,  # (N+2M,)
+        "tool_mask": tool_mask,  # (N+2M,)
         "obj_mask": obj_mask,  # (N,)
     }
 
@@ -270,64 +291,49 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
             extr = extr_list[cam]
             save_dir_cam = os.path.join(save_dir, f'camera_{cam}')
 
-            # transform keypoints
+            # visualize keypoints
             kp_vis = state_history[-1, :obj_kp_num]
-            obj_kp_homo = np.concatenate([kp_vis, np.ones((kp_vis.shape[0], 1))], axis=1) # (N, 4)
-            obj_kp_homo = obj_kp_homo @ extr.T  # (N, 4)
-
-            obj_kp_homo[:, 1] *= -1
-            obj_kp_homo[:, 2] *= -1
-
-            # project keypoints
-            fx, fy, cx, cy = intr
-            obj_kp_proj = np.zeros((obj_kp_homo.shape[0], 2))
-            obj_kp_proj[:, 0] = obj_kp_homo[:, 0] * fx / obj_kp_homo[:, 2] + cx
-            obj_kp_proj[:, 1] = obj_kp_homo[:, 1] * fy / obj_kp_homo[:, 2] + cy
-
-            # also transform eef keypoints
-            eef_kp_start = eef_kp[0]
-            eef_kp_homo = np.concatenate([eef_kp_start, np.ones((eef_kp_start.shape[0], 1))], axis=1) # (N, 4)
-            eef_kp_homo = eef_kp_homo @ extr.T  # (N, 4)
-
-            eef_kp_homo[:, 1] *= -1
-            eef_kp_homo[:, 2] *= -1
-
-            # also project eef keypoints
-            fx, fy, cx, cy = intr
-            eef_kp_proj = np.zeros((eef_kp_homo.shape[0], 2))
-            eef_kp_proj[:, 0] = eef_kp_homo[:, 0] * fx / eef_kp_homo[:, 2] + cx
-            eef_kp_proj[:, 1] = eef_kp_homo[:, 1] * fy / eef_kp_homo[:, 2] + cy
-
-            # visualize
-            for k in range(obj_kp_proj.shape[0]):
-                cv2.circle(img, (int(obj_kp_proj[k, 0]), int(obj_kp_proj[k, 1])), point_size, 
-                    (int(colormap[k, 2]), int(colormap[k, 1]), int(colormap[k, 0])), -1)
-
-            # also visualize eef in red
-            for k in range(eef_kp_proj.shape[0]):
-                cv2.circle(img, (int(eef_kp_proj[k, 0]), int(eef_kp_proj[k, 1])), 3, 
-                    (0, 0, 255), -1)
+            obj_kp_proj, img = vis_points(kp_vis, intr, extr, img, point_size=point_size, point_color=(255, 0, 0)) # blue
+            
+            dynamic_tool_kp_start = dynamic_tool_kp[0]
+            dynamic_tool_kp_proj, img = vis_points(dynamic_tool_kp_start, intr, extr, img, point_size=point_size, point_color=(0, 0, 255)) # red
+            
+            static_tool_kp_start = static_tool_kp[0]
+            static_tool_kp_proj, img = vis_points(static_tool_kp_start, intr, extr, img, point_size=point_size, point_color=(0, 0, 255)) # red
 
             # visualize edges
             for k in range(Rr.shape[0]):
                 if Rr[k].sum() == 0: continue
                 receiver = Rr[k].argmax()
                 sender = Rs[k].argmax()
-                if receiver >= max_nobj:  # eef
+                
+                if receiver >= max_nobj:  # tool
+                    if receiver >= max_nobj + max_ntool: # static tool
+                        cv2.line(img,
+                            (int(static_tool_kp_proj[receiver - max_nobj - max_ntool, 0]), int(static_tool_kp_proj[receiver - max_nobj - max_ntool, 1])),
+                            (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])),
+                            (0, 0, 255), 2)
+                    else: # dynamic tool
+                        cv2.line(img,
+                            (int(dynamic_tool_kp_proj[receiver - max_nobj, 0]), int(dynamic_tool_kp_proj[receiver - max_nobj, 1])),
+                            (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])),
+                            (0, 0, 255), 2)
+                elif sender >= max_nobj:  # tool
+                    if sender >= max_nobj + max_ntool: # static tool
+                        cv2.line(img,
+                            (int(static_tool_kp_proj[sender - max_nobj - max_ntool, 0]), int(static_tool_kp_proj[sender - max_nobj - max_ntool, 1])),
+                            (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])),
+                            (0, 0, 255), 2)
+                    else: # dynamic tool
+                        cv2.line(img,
+                            (int(dynamic_tool_kp_proj[sender - max_nobj, 0]), int(dynamic_tool_kp_proj[sender - max_nobj, 1])),
+                            (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])),
+                            (0, 0, 255), 2)
+                else: # obj
                     cv2.line(img, 
-                        (int(eef_kp_proj[receiver - max_nobj, 0]), int(eef_kp_proj[receiver - max_nobj, 1])), 
-                        (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])), 
-                        (0, 0, 255), 2)
-                elif sender >= max_nobj:  # eef
-                    cv2.line(img, 
-                        (int(eef_kp_proj[sender - max_nobj, 0]), int(eef_kp_proj[sender - max_nobj, 1])), 
                         (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])), 
-                        (0, 0, 255), 2)
-                else:
-                    cv2.line(img, 
-                        (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])), 
                         (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])), 
-                        (0, 255, 0), 2)
+                        (0, 255, 0), 2) # green
 
             pred_kp_proj_last.append(obj_kp_proj)
             gt_kp_proj_last.append(obj_kp_proj)
@@ -404,27 +410,35 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
             current_start = next_pair[n_his-1]
             current_end = next_pair[n_his]
             idx_list.append([current_start, current_end])
-
+            
             # generate next graph
-            # load eef kypts
-            eef_kps = np.load(eef_kypts_paths).astype(np.float32)
-            eef_kp_start, eef_kp_end = eef_kps[current_start], eef_kps[current_end]
-            eef_kp = np.stack([[eef_kp_start], [eef_kp_end]], axis=0)
-            eef_kp_num = eef_kp.shape[1]
-            eef_kp = pad(eef_kp, max_neef, dim=1)
-
-            states = np.concatenate([pred_state[0], eef_kp[0]], axis=0)
+            # load tool kypts
+            dynamic_tool_kps = np.load(dynamic_tool_kypts_paths).astype(np.float32)
+            dynamic_tool_kp_start, dynamic_tool_kp_end = dynamic_tool_kps[current_start], dynamic_tool_kps[current_end]
+            dynamic_tool_kp = np.stack([dynamic_tool_kp_start, dynamic_tool_kp_end], axis=0)
+            dynamic_tool_kp_num = dynamic_tool_kp.shape[1]
+            
+            static_tool_kps = np.load(static_tool_kypts_paths).astype(np.float32)
+            static_tool_kp_start, static_tool_kp_end = static_tool_kps[current_start], static_tool_kps[current_end]
+            static_tool_kp = np.stack([static_tool_kp_start, static_tool_kp_end], axis=0)
+            static_tool_kp_num = static_tool_kp.shape[1]
+            
+            # pred states: (obj + dynamic_tool + static_tool, 3)
+            states = np.concatenate([pred_state[0], dynamic_tool_kp[0], static_tool_kp[0]], axis=0)
+            # print(states.shape)
+            
             Rr, Rs = construct_edges_from_states(torch.tensor(states).unsqueeze(0), adj_thresh * 1.5, 
                                                 mask=torch.tensor(state_mask).unsqueeze(0), 
-                                                eef_mask=torch.tensor(eef_mask).unsqueeze(0),
+                                                tool_mask=torch.tensor(tool_mask).unsqueeze(0),
                                                 no_self_edge=True)
             Rr, Rs = Rr.squeeze(0).numpy(), Rs.squeeze(0).numpy()
             Rr = np.pad(Rr, ((0, max_nR - Rr.shape[0]), (0, 0)), mode='constant')
             Rs = np.pad(Rs, ((0, max_nR - Rs.shape[0]), (0, 0)), mode='constant')
-
-            # action encoded as state_delta (only stored in eef keypoints)
-            states_delta = np.zeros((max_nobj + max_neef, states.shape[-1]), dtype=np.float32)
-            states_delta[max_nobj : max_nobj + eef_kp_num] = eef_kp[1] - eef_kp[0]
+            
+            # action encoded as state_delta (only stored in tool keypoints)
+            states_delta = np.zeros((max_nobj + max_ntool * 2, 3), dtype=np.float32)
+            states_delta[max_nobj : max_nobj + dynamic_tool_kp_num] = dynamic_tool_kp[1] - dynamic_tool_kp[0]
+            assert (static_tool_kp[1] == static_tool_kp[0]).all(), 'static tool should be static'
 
             state_history = np.concatenate([state_history[1:], states[None]], axis=0)
 
@@ -454,70 +468,54 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
                     extr = extr_list[cam]
                     save_dir_cam = os.path.join(save_dir, f'camera_{cam}')
 
-                    # transform keypoints
-                    obj_kp_homo = np.concatenate([obj_kp_vis, np.ones((obj_kp_vis.shape[0], 1))], axis=1) # (N, 4)
-                    obj_kp_homo = obj_kp_homo @ extr.T  # (N, 4)
-
-                    obj_kp_homo[:, 1] *= -1
-                    obj_kp_homo[:, 2] *= -1
-
-                    # project keypoints
-                    fx, fy, cx, cy = intr
-                    obj_kp_proj = np.zeros((obj_kp_homo.shape[0], 2))
-                    obj_kp_proj[:, 0] = obj_kp_homo[:, 0] * fx / obj_kp_homo[:, 2] + cx
-                    obj_kp_proj[:, 1] = obj_kp_homo[:, 1] * fy / obj_kp_homo[:, 2] + cy
-
+                    # visualize keypoints
+                    obj_kp_proj, img = vis_points(obj_kp_vis, intr, extr, img, point_size=point_size, point_color=(255, 0, 0)) # blue
                     pred_kp_proj_list.append(obj_kp_proj)
-
-                    # also transform eef keypoints
-                    eef_kp_vis = eef_kp[0, :eef_kp_num]
-                    eef_kp_homo = np.concatenate([eef_kp_vis, np.ones((eef_kp_vis.shape[0], 1))], axis=1) # (N, 4)
-                    eef_kp_homo = eef_kp_homo @ extr.T  # (N, 4)
-
-                    eef_kp_homo[:, 1] *= -1
-                    eef_kp_homo[:, 2] *= -1
-
-                    # also project eef keypoints
-                    fx, fy, cx, cy = intr
-                    eef_kp_proj = np.zeros((eef_kp_homo.shape[0], 2))
-                    eef_kp_proj[:, 0] = eef_kp_homo[:, 0] * fx / eef_kp_homo[:, 2] + cx
-                    eef_kp_proj[:, 1] = eef_kp_homo[:, 1] * fy / eef_kp_homo[:, 2] + cy
-
-                    # visualize
-                    for k in range(obj_kp_proj.shape[0]):
-                        cv2.circle(img, (int(obj_kp_proj[k, 0]), int(obj_kp_proj[k, 1])), point_size, 
-                            (int(colormap[k, 2]), int(colormap[k, 1]), int(colormap[k, 0])), -1)
-
-                    # also visualize eef in red
-                    for k in range(eef_kp_proj.shape[0]):
-                        cv2.circle(img, (int(eef_kp_proj[k, 0]), int(eef_kp_proj[k, 1])), point_size, 
-                            (0, 0, 255), -1)
+                    
+                    dynamic_tool_kp_vis = dynamic_tool_kp[0, :dynamic_tool_kp_num]
+                    dynamic_tool_kp_proj, img = vis_points(dynamic_tool_kp_vis, intr, extr, img, point_size=point_size, point_color=(0, 0, 255)) # red
+                    
+                    static_tool_kp_vis = static_tool_kp[0, :static_tool_kp_num]
+                    static_tool_kp_proj, img = vis_points(static_tool_kp_vis, intr, extr, img, point_size=point_size, point_color=(0, 0, 255)) # red
 
                     pred_kp_last = pred_kp_proj_last[cam]
                     for k in range(obj_kp_proj.shape[0]):
                         pred_lineset[cam].append([int(obj_kp_proj[k, 0]), int(obj_kp_proj[k, 1]), int(pred_kp_last[k, 0]), int(pred_kp_last[k, 1]), 
                                             int(colormap[k, 2]), int(colormap[k, 1]), int(colormap[k, 0]), i])
                     
-                    # visualize edges
+                   # visualize edges
                     for k in range(Rr.shape[0]):
                         if Rr[k].sum() == 0: continue
                         receiver = Rr[k].argmax()
                         sender = Rs[k].argmax()
-                        if receiver >= max_nobj:  # eef
+                        
+                        if receiver >= max_nobj:  # tool
+                            if receiver >= max_nobj + max_ntool: # static tool
+                                cv2.line(img,
+                                    (int(static_tool_kp_proj[receiver - max_nobj - max_ntool, 0]), int(static_tool_kp_proj[receiver - max_nobj - max_ntool, 1])),
+                                    (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])),
+                                    (0, 0, 255), 2)
+                            else: # dynamic tool
+                                cv2.line(img,
+                                    (int(dynamic_tool_kp_proj[receiver - max_nobj, 0]), int(dynamic_tool_kp_proj[receiver - max_nobj, 1])),
+                                    (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])),
+                                    (0, 0, 255), 2)
+                        elif sender >= max_nobj:  # tool
+                            if sender >= max_nobj + max_ntool: # static tool
+                                cv2.line(img,
+                                    (int(static_tool_kp_proj[sender - max_nobj - max_ntool, 0]), int(static_tool_kp_proj[sender - max_nobj - max_ntool, 1])),
+                                    (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])),
+                                    (0, 0, 255), 2)
+                            else: # dynamic tool
+                                cv2.line(img,
+                                    (int(dynamic_tool_kp_proj[sender - max_nobj, 0]), int(dynamic_tool_kp_proj[sender - max_nobj, 1])),
+                                    (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])),
+                                    (0, 0, 255), 2)
+                        else: # obj
                             cv2.line(img, 
-                                (int(eef_kp_proj[receiver - max_nobj, 0]), int(eef_kp_proj[receiver - max_nobj, 1])), 
-                                (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])), 
-                                (0, 0, 255), 2)
-                        elif sender >= max_nobj:  # eef
-                            cv2.line(img, 
-                                (int(eef_kp_proj[sender - max_nobj, 0]), int(eef_kp_proj[sender - max_nobj, 1])), 
                                 (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])), 
-                                (0, 0, 255), 2)
-                        else:
-                            cv2.line(img, 
-                                (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])), 
                                 (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])), 
-                                (0, 255, 0), 2)
+                                (0, 255, 0), 2) # green
 
                     img_overlay = img.copy()
                     for k in range(len(pred_lineset[cam])):
@@ -535,6 +533,7 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
                     gt_kp_homo[:, 1] *= -1
                     gt_kp_homo[:, 2] *= -1        
                     gt_kp_proj = np.zeros((gt_kp_homo.shape[0], 2))
+                    fx, fy, cx, cy = intr
                     gt_kp_proj[:, 0] = gt_kp_homo[:, 0] * fx / gt_kp_homo[:, 2] + cx
                     gt_kp_proj[:, 1] = gt_kp_homo[:, 1] * fy / gt_kp_homo[:, 2] + cy
 
@@ -549,17 +548,19 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
                         gt_lineset[cam].append([int(gt_kp_proj[k, 0]), int(gt_kp_proj[k, 1]), int(gt_kp_last[k, 0]), int(gt_kp_last[k, 1]), 
                                         int(colormap[k, 2]), int(colormap[k, 1]), int(colormap[k, 0]), i])
 
-                    # also visualize eef in red
-                    for k in range(eef_kp_proj.shape[0]):
-                        cv2.circle(img, (int(eef_kp_proj[k, 0]), int(eef_kp_proj[k, 1])), point_size, 
-                            (0, 0, 255), -1)
+                    dynamic_tool_kp_vis = dynamic_tool_kp[0, :dynamic_tool_kp_num]
+                    dynamic_tool_kp_proj, img = vis_points(dynamic_tool_kp_vis, intr, extr, img, point_size=point_size, point_color=(0, 0, 255)) # red
+                    
+                    static_tool_kp_vis = static_tool_kp[0, :static_tool_kp_num]
+                    static_tool_kp_proj, img = vis_points(static_tool_kp_vis, intr, extr, img, point_size=point_size, point_color=(0, 0, 255)) # red
 
-                    # visualize edges
+                    # # visualize edges
                     # for k in range(Rr.shape[0]):
                     #     if Rr[k].sum() == 0: continue
                     #     receiver = Rr[k].argmax()
                     #     sender = Rs[k].argmax()
                     #     if receiver >= max_nobj:  # eef
+                    #         if receiver - max_nobj >= eef_kp_proj.shape[0]: continue
                     #         cv2.line(img, 
                     #             (int(eef_kp_proj[receiver - max_nobj, 0]), int(eef_kp_proj[receiver - max_nobj, 1])), 
                     #             (int(gt_kp_proj[sender, 0]), int(gt_kp_proj[sender, 1])), 
@@ -611,10 +612,10 @@ def rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode
 def rollout_vis(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, prep_save_dir):
     args = gen_args()
 
-    episode_idx = 24
-    push_idx = 0
+    episode_idx = 25
+    # push_idx = 1
     start_idx = 0
-    rollout_steps = 100
+    rollout_steps = 300
 
     colormap = rgb_colormap(repeat=100)  # only red
     # colormap = label_colormap()
@@ -625,7 +626,8 @@ def rollout_vis(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, pre
     print(f"rollout {episode_idx} from {start_idx} to {start_idx + rollout_steps} with {checkpoint}")
     print(f"saving to {save_dir}")
 
-    rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode_idx, push_idx, start_idx, rollout_steps, colormap, vis=True, evaluate=False)
+    for push_idx in range(5):
+        rollout(args, data_dir, prep_save_dir, save_dir, checkpoint, episode_idx, push_idx, start_idx, rollout_steps, colormap, vis=True, evaluate=False)
 
     for cam in range(4):
         img_path = os.path.join(save_dir, f"camera_{cam}")
@@ -646,7 +648,7 @@ def rollout_eval(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, pr
     os.makedirs(save_dir, exist_ok=True)
     
     episode_range = range(22, 25)
-    push_range = range(0, 5)
+    push_range = range(0, 5) 
     start_idx = 0
     rollout_steps = 100
 
@@ -657,7 +659,7 @@ def rollout_eval(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, pr
             print(f"rollout {episode_idx} from {start_idx} to {start_idx + rollout_steps} with {checkpoint}")
             print(f"saving to {save_dir}")
 
-            error = rollout_carrots(args, data_dir, prep_save_dir, save_dir, checkpoint, episode_idx, push_idx, start_idx, rollout_steps, vis=False, evaluate=True)
+            error = rollout(args, data_dir, prep_save_dir, save_dir, checkpoint, episode_idx, push_idx, start_idx, rollout_steps, vis=False, evaluate=True)
             total_error.append(error)
     
     max_step = max([len(total_error[i]) for i in range(len(total_error))])
@@ -696,8 +698,8 @@ if __name__ == "__main__":
     data_dir = f"/mnt/sda/data/{data_name}"
     checkpoint_dir_name = args.checkpoint_name
     checkpoint_epoch = args.checkpoint_epoch
-    checkpoint = f"/mnt/sda/relation_logs/{checkpoint_dir_name}/checkpoints/model_{checkpoint_epoch}.pth"
-    # checkpoint = f"/mnt/sda/logs/{checkpoint_dir_name}/checkpoints/latest.pth"
+    # checkpoint = f"/mnt/sda/relation_logs/{checkpoint_dir_name}/checkpoints/model_{checkpoint_epoch}.pth"
+    checkpoint = f"/mnt/sda/logs/{checkpoint_dir_name}/checkpoints/latest.pth"
     prep_save_dir = f"/mnt/sda/preprocess/{data_name}"
     rollout_vis(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, prep_save_dir)
     rollout_eval(data_dir, checkpoint_dir_name, checkpoint_epoch, checkpoint, prep_save_dir)

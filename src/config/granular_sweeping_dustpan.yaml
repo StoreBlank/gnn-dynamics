@@ -2,7 +2,7 @@ train_config:
   out_dir: "/mnt/sda/logs/granular_sweeping_dustpan"
   phases: ["train", "valid"]
   batch_size: 64
-  n_epochs: 10
+  n_epochs: 20
   n_iters_per_epoch:
     train: 250
     valid: 25
