@@ -34,7 +34,7 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
         adj_thresh = torch.tensor(adj_thresh, device=states.device, dtype=states.dtype).repeat(B)
     threshold = adj_thresh * adj_thresh
     # convert threshold to tensor
-    threshold = torch.tensor(threshold, device=states.device, dtype=states.dtype)
+    # threshold = torch.tensor(threshold, device=states.device, dtype=states.dtype)
     
     dis = torch.sum((s_sender - s_receiv)**2, -1)
     mask_1 = mask[:, :, None].repeat(1, 1, N)

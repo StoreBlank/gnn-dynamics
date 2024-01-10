@@ -214,7 +214,7 @@ def extract_eef_points(data_dir):
 
 if __name__ == "__main__":
     # i = 4
-    data_name = "carrots_test"
+    data_name = "carrots"
     data_dir_list = [
         f"/mnt/sda/data/{data_name}"
     ]

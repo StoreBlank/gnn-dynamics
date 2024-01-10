@@ -27,7 +27,7 @@ from train import truncate_graph
 # component functions for rollout
 def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
         kp_vis, gt_kp_vis, tool_kp, Rr, Rs,
-        max_nobj,
+        max_nobj, max_ntool,
         colormap=None, point_size=4, edge_size=1, line_size=2, line_alpha=0.5, t_line=5,
         gt_lineset=None, pred_lineset=None, 
         pred_kp_proj_last=None, gt_kp_proj_last=None):
@@ -69,8 +69,7 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
         img_path = os.path.join(data_dir, f'episode_{episode_idx}', f'camera_{cam}', f'{start}_color.jpg')
         img_orig = cv2.imread(img_path)
         img = img_orig.copy()
-        # intr = intr_list[cam]
-        # extr = extr_list[cam]
+
         save_dir_cam = os.path.join(save_dir, f'camera_{cam}')
         os.makedirs(save_dir_cam, exist_ok=True)
 
@@ -93,21 +92,22 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
             if Rr[k].sum() == 0: continue
             receiver = Rr[k].argmax()
             sender = Rs[k].argmax()
+            
             if receiver >= max_nobj:  # tool
-                cv2.line(img, 
-                    (int(tool_kp_proj[receiver - max_nobj, 0]), int(tool_kp_proj[receiver - max_nobj, 1])), 
-                    (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])), 
-                    (0, 0, 255), edge_size)
+                cv2.line(img,
+                    (int(tool_kp_proj[receiver - max_nobj, 0]), int(tool_kp_proj[receiver - max_nobj, 1])),
+                    (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])),
+                    (0, 0, 255), edge_size) # red
             elif sender >= max_nobj:  # tool
-                cv2.line(img, 
-                    (int(tool_kp_proj[sender - max_nobj, 0]), int(tool_kp_proj[sender - max_nobj, 1])), 
-                    (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])), 
-                    (0, 0, 255), edge_size)
-            else:
+                cv2.line(img,
+                    (int(tool_kp_proj[sender - max_nobj, 0]), int(tool_kp_proj[sender - max_nobj, 1])),
+                    (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])),
+                    (0, 0, 255), edge_size) # red
+            else: # obj
                 cv2.line(img, 
                     (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])), 
                     (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])), 
-                    (0, 255, 0), edge_size)
+                    (0, 255, 0), edge_size) # green
 
         # overlay lineset
         img_overlay = img.copy()
@@ -142,20 +142,20 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
             receiver = Rr[k].argmax()
             sender = Rs[k].argmax()
             if receiver >= max_nobj:  # tool
-                cv2.line(img, 
-                    (int(tool_kp_proj[receiver - max_nobj, 0]), int(tool_kp_proj[receiver - max_nobj, 1])), 
-                    (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])), 
-                    (0, 0, 255), edge_size)
+                cv2.line(img,
+                    (int(tool_kp_proj[receiver - max_nobj, 0]), int(tool_kp_proj[receiver - max_nobj, 1])),
+                    (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])),
+                    (0, 0, 255), edge_size) # red
             elif sender >= max_nobj:  # tool
-                cv2.line(img, 
-                    (int(tool_kp_proj[sender - max_nobj, 0]), int(tool_kp_proj[sender - max_nobj, 1])), 
-                    (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])), 
-                    (0, 0, 255), edge_size)
-            else:
+                cv2.line(img,
+                    (int(tool_kp_proj[sender - max_nobj, 0]), int(tool_kp_proj[sender - max_nobj, 1])),
+                    (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])),
+                    (0, 0, 255), edge_size) # red
+            else: # obj
                 cv2.line(img, 
                     (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])), 
                     (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])), 
-                    (0, 255, 0), edge_size)
+                    (0, 255, 0), edge_size) # green
 
         img_overlay = img.copy()
         for k in range(len(gt_lineset[cam])):
@@ -183,13 +183,13 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
     max_nR = dataset['max_nR']
     fps_radius = (dataset['fps_radius_range'][0] + dataset['fps_radius_range'][1]) / 2
     adj_thresh = (dataset['adj_radius_range'][0] + dataset['adj_radius_range'][1]) / 2
-
+    
     data_name = dataset['name']
     if data_name == 'rope':
         from preprocess.preprocess_rope import extract_kp_single_frame
     elif data_name == 'granular':
         from preprocess.preprocess_granular import extract_kp_single_frame
-    
+
     ### construct graph ###
 
     # get history keypoints
@@ -207,8 +207,6 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
 
     fps_idx_list = []
     # can_pos = np.load(canonical_pos[episode_idx])  # (N,)
-    # print(f"obj_kp_start: {obj_kp_start.shape}")
-    print(f"obj_kp_start: min {obj_kp_start[0].min(0)}, max {obj_kp_start[0].max(0)}")
     for j in range(len(obj_kp_start)):
         # farthest point sampling
         particle_tensor = torch.from_numpy(obj_kp_start[j]).float()[None, ...]
@@ -219,7 +217,6 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
         downsample_particle = particle_tensor[0, fps_idx_1, :].numpy()
         _, fps_idx_2 = fps_rad_idx(downsample_particle, fps_radius)
         fps_idx_2 = fps_idx_2.astype(int)
-        print(f"fps_idx_2: {fps_idx_2.shape}")
         fps_idx = fps_idx_1[fps_idx_2]
         fps_idx_list.append(fps_idx)
 
@@ -238,9 +235,10 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
         obj_kp_his = pad(obj_kp_his, max_nobj)
         state_history[fi, :max_nobj] = obj_kp_his
 
+        # dynamic tool
         tool_kp_his = tool_kps[fi]
-        tool_kp_his = pad(tool_kp_his, max_ntool * max_tool)
-        state_history[fi, max_nobj : max_nobj + max_ntool * max_tool] = tool_kp_his
+        tool_kp_his = pad(tool_kp_his, max_ntool)
+        state_history[fi, max_nobj : max_nobj + max_ntool] = tool_kp_his
 
     # get current state delta
     tool_kp = np.stack(tool_kps[n_his-1:n_his+1], axis=0)  # (2, N, 3)
@@ -252,13 +250,13 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
     # get masks
     state_mask = np.zeros((max_nobj + max_ntool * max_tool), dtype=bool)
     state_mask[:obj_kp_num] = True # obj
-    state_mask[max_nobj : max_nobj + tool_kp_num] = True
+    state_mask[max_nobj : max_nobj + tool_kp_num] = True # tool
     
     obj_mask = np.zeros((max_nobj,), dtype=bool)
     obj_mask[:obj_kp_num] = True
     
     tool_mask = np.zeros((max_nobj + max_ntool * max_tool,), dtype=bool)
-    tool_mask[max_nobj : max_nobj + tool_kp_num] = True # dynamic tool
+    tool_mask[max_nobj : max_nobj + tool_kp_num] = True # tool
 
     # construct instance information
     p_rigid = np.zeros(max_n, dtype=np.float32)  # clothes are nonrigid
@@ -288,7 +286,7 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
     attr_dim = 2
     attrs = np.zeros((max_nobj + max_ntool * max_tool, attr_dim), dtype=np.float32)
     attrs[:obj_kp_num, 0] = 1.
-    attrs[max_nobj : max_nobj + tool_kp_num, 1] = 1
+    attrs[max_nobj : max_nobj + tool_kp_num] = 1 # tool
 
     # numpy to torch
     state_history = torch.from_numpy(state_history).float()
@@ -304,15 +302,15 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
     tool_kp = torch.from_numpy(tool_kp).float()
 
     # construct relations (density as hyperparameter)
-    Rr, Rs = construct_edges_from_states(state_history[-1][None], adj_thresh, 
-                mask=state_mask[None], tool_mask=tool_mask[None], no_self_edge=True)
-    # print(f"Rr: {Rr.shape}, Rs: {Rs.shape}")
+    Rr, Rs = construct_edges_from_states(state_history[-1].unsqueeze(0), 
+                                        adj_thresh, 
+                                        mask=state_mask.unsqueeze(0), 
+                                        tool_mask=tool_mask.unsqueeze(0), 
+                                        no_self_edge=True)
     Rr = Rr[0].numpy()
     Rs = Rs[0].numpy()
     Rr = pad(Rr, max_nR)
     Rs = pad(Rs, max_nR)
-    Rr = torch.from_numpy(Rr).float()
-    Rs = torch.from_numpy(Rs).float()
 
     # save graph
     graph = {
@@ -336,7 +334,7 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
         "material_index": material_idx,  # (N, num_materials)
 
         # for non-model use
-        "tool_kp": tool_kp,  # (2, max_ntool * max_tool, 3)
+        "tool_kp": tool_kp,  # (2, static_tool_num + tool_num, 3)
     }
 
     for material_name in physics_param.keys():
@@ -383,7 +381,6 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
 
     obj_mask = graph['obj_mask'].numpy()
     obj_kp_num = obj_mask.sum()
-    print(f"obj_kp_num: {obj_kp_num}")
     max_nobj = dataset['max_nobj']
     max_ntool = dataset['max_ntool']
 
@@ -395,7 +392,7 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
         kp_vis = graph['state'][-1, :obj_kp_num].numpy()
         pred_kp_proj_last, gt_kp_proj_last, gt_lineset, pred_lineset = \
             visualize_graph(dataset['data_dir'], episode_idx, current_start, current_end, 0, save_dir,
-            kp_vis, kp_vis, tool_kp, Rr, Rs, max_nobj)
+            kp_vis, kp_vis, tool_kp, Rr, Rs, max_nobj, max_ntool)
 
     graph = {key: graph[key].unsqueeze(0).to(device) for key in graph.keys()}
 
@@ -405,12 +402,11 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
     idx_list = [[current_start, current_end]]
     with torch.no_grad():
         for i in range(1, 1 + rollout_steps):
-            # n_frames = np.load(os.path.join(dataset["data_dir"], f"episode_{episode_idx}/particles_pos.npy")).shape[1]
-            n_frames = len(list(glob.glob(os.path.join(dataset['data_dir'], f"episode_{episode_idx}/camera_0/*_particles.npy"))))
+            n_frames = np.load(os.path.join(dataset["data_dir"], f"episode_{episode_idx}/particles_pos.npy")).shape[1]
 
             n_his = model.model_config['n_his']
-            max_nobj = dataset['max_nobj']
             max_tool = dataset['max_tool']
+            max_nobj = dataset['max_nobj']
             max_ntool = dataset['max_ntool']
             max_nR = dataset['max_nR']
             adj_thresh = (dataset['adj_radius_range'][0] + dataset['adj_radius_range'][1]) / 2
@@ -427,7 +423,7 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
 
             # prepare gt
             gt_state, _ = extract_kp_single_frame(dataset["data_dir"], episode_idx, current_end)
-            # gt_state = [gt_state]
+            gt_state = [gt_state]
             gt_state = [gt_state[j][fps_idx] for j, fps_idx in enumerate(fps_idx_list)]
             gt_state = np.concatenate(gt_state, axis=0)
             gt_state = pad(gt_state, max_nobj)
@@ -459,28 +455,25 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
             tool_kp_num = tool_kp_start.shape[0]
 
             tool_kp = np.stack([tool_kp_start, tool_kp_end], axis=0)  # (2, N, 3)
-            tool_kp = pad(tool_kp, max_ntool * max_tool, dim=1)
+            tool_kp = pad(tool_kp, max_ntool, dim=1)
 
             states = np.concatenate([pred_state, tool_kp[0:1]], axis=1)
             assert states.shape[1] == max_nobj + max_ntool * max_tool
             assert states.shape[0] == 1
-            Rr, Rs = construct_edges_from_states(torch.tensor(states), adj_thresh, 
-                                                mask=graph['state_mask'], 
-                                                tool_mask=graph['tool_mask'],
+            Rr, Rs = construct_edges_from_states(torch.tensor(states).unsqueeze(0), 
+                                                adj_thresh, 
+                                                mask=graph['state_mask'].unsqueeze(0), 
+                                                tool_mask=graph['tool_mask'].unsqueeze(0),
                                                 no_self_edge=True)
-            Rr = Rr[0].numpy()
-            Rs = Rs[0].numpy()
             Rr = pad(Rr, max_nR)
             Rs = pad(Rs, max_nR)
-            Rr = torch.from_numpy(Rr).float()
-            Rs = torch.from_numpy(Rs).float()
 
             # action encoded as state_delta (only stored in tool keypoints)
             states_delta = np.zeros((max_nobj + max_ntool * max_tool, states.shape[-1]), dtype=np.float32)
             states_delta[max_nobj : max_nobj + tool_kp_num] = tool_kp[1] - tool_kp[0]
  
             state_history = graph['state'][0].detach().cpu().numpy()
-            state_history = np.concatenate([state_history[1:], states], axis=0)
+            state_history = np.concatenate([state_history[1:], states[None]], axis=0)
 
             new_graph = {
                 "state": torch.from_numpy(state_history).unsqueeze(0).to(device),  # (n_his, N+M, state_dim)
@@ -508,7 +501,7 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
             if vis:
                 pred_kp_proj_last, gt_kp_proj_last, gt_lineset, pred_lineset = \
                     visualize_graph(dataset['data_dir'], episode_idx, current_start, current_end, i, save_dir,
-                    obj_kp_vis, gt_kp_vis, tool_kp, Rr, Rs, max_nobj,
+                    obj_kp_vis, gt_kp_vis, tool_kp, Rr, Rs, max_nobj, max_ntool,
                     gt_lineset=gt_lineset, pred_lineset=pred_lineset,
                     pred_kp_proj_last=pred_kp_proj_last, gt_kp_proj_last=gt_kp_proj_last)
 
