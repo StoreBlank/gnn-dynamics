@@ -7,8 +7,9 @@ import torch
 from torch.utils.data import Dataset
 
 from dgl.geometry import farthest_point_sampler
-from preprocess_rope import extract_kp_single_frame
 from utils import pad, pad_torch, fps_rad_idx
+
+from preprocess.preprocess_rope import extract_kp_single_frame
 
 def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edge=False):  # helper function for construct_graph
     '''

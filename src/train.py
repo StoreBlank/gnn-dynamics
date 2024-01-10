@@ -78,6 +78,7 @@ def train(config):
     os.makedirs(train_config['out_dir'], exist_ok=True)
     os.makedirs(os.path.join(train_config['out_dir'], 'checkpoints'), exist_ok=True)
 
+    # data loader
     phases = train_config['phases']
     dataset_config['n_his'] = train_config['n_his']
     dataset_config['n_future'] = train_config['n_future']
@@ -89,18 +90,28 @@ def train(config):
         datasets[phase],
         batch_size=train_config['batch_size'],
         shuffle=(phase == 'train'),
-        num_workers=1,
+        num_workers=12,
     ) for phase in phases}
     dataloaders = {phase: dataloader_wrapper(dataloaders[phase], phase) for phase in phases}
 
+    # model
     model_config['n_his'] = train_config['n_his']
     model = DynamicsPredictor(model_config, material_config, device)
     model.to(device)
 
+    # loss function and optimizer
     mse_loss = torch.nn.MSELoss()
     loss_funcs = [(mse_loss, 1)]
-    
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    
+    # checkpoint if exists
+    if train_config['load_model']:
+        print(f'Loading model from {train_config["model_checkpoint"]} and {train_config["optimizer_checkpoint"]}')
+        model_checkpoint = torch.load(train_config['model_checkpoint'])
+        model.load_state_dict(model_checkpoint)
+        optimizer_checkpoint = torch.load(train_config['optimizer_checkpoint'])
+        optimizer.load_state_dict(optimizer_checkpoint)
+    
     loss_plot_list_train, loss_plot_list_valid = [], []
     for epoch in range(train_config['n_epochs']):
         time1 = time.time()
@@ -182,6 +193,7 @@ def train(config):
         
         if ((epoch + 1) < 100 and (epoch + 1) % 10 == 0) or (epoch + 1) % 100 == 0:
             torch.save(model.state_dict(), os.path.join(train_config['out_dir'], 'checkpoints', f'model_{(epoch + 1)}.pth'))
+            torch.save(optimizer.state_dict(), os.path.join(train_config['out_dir'], 'checkpoints', f'optim_{(epoch + 1)}.pth'))
         torch.save(model.state_dict(), os.path.join(train_config['out_dir'], 'checkpoints', f'latest.pth'))
         torch.save(optimizer.state_dict(), os.path.join(train_config['out_dir'], 'checkpoints', f'latest_optim.pth'))
         

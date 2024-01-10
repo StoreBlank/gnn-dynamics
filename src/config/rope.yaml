@@ -1,11 +1,15 @@
 train_config:
   out_dir: "/mnt/sda/logs/rope"
   phases: ["train", "valid"]
+  load_model: True
+  model_checkpoint: "/mnt/sda/logs/rope_new/checkpoints/latest.pth"
+  optimizer_checkpoint: "/mnt/sda/logs/rope_new/checkpoints/latest_optim.pth"
+  
   batch_size: 128
   n_epochs: 100
   n_iters_per_epoch:
-    train: 250
-    valid: 25
+    train: 1000
+    valid: 100
   log_interval: 50
   random_seed: 42
   n_his: 4
@@ -54,9 +58,9 @@ dataset_config:
       data_dir: "/mnt/sda/data/rope"
       prep_data_dir: "/mnt/sda/preprocess/rope"
       fps_radius_range: [0.09, 0.11]
-      adj_radius_range: [0.14, 0.16]
+      adj_radius_range: [0.24, 0.26]
       state_noise: 
-        train: 0.01
+        train: 0.02
         valid: 0.0
       phys_noise: 
         train: 0.0
@@ -67,7 +71,7 @@ dataset_config:
       max_n: 1
       max_tool: 1
       max_nobj: 100
-      max_ntool: 100
+      max_ntool: 1
       max_nR: 500
 
 material_config:
@@ -84,7 +88,7 @@ material_config:
         min: 0.
         max: 5000.
       - name: "length"
-        use: True
+        use: False
         min: 2.5
         max: 5.0
       - name: "thickness"
@@ -98,4 +102,4 @@ material_config:
       - name: "cluster_spacing"
         use: True
         min: 2.0
-        max: 12.0
+        max: 8.0
