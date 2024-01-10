@@ -74,6 +74,7 @@ def train(config):
     torch.autograd.set_detect_anomaly(True)
     set_seed(train_config['random_seed'])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"device: {device}")
 
     os.makedirs(train_config['out_dir'], exist_ok=True)
     os.makedirs(os.path.join(train_config['out_dir'], 'checkpoints'), exist_ok=True)
@@ -90,7 +91,7 @@ def train(config):
         datasets[phase],
         batch_size=train_config['batch_size'],
         shuffle=(phase == 'train'),
-        num_workers=12,
+        num_workers=1,
     ) for phase in phases}
     dataloaders = {phase: dataloader_wrapper(dataloaders[phase], phase) for phase in phases}
 

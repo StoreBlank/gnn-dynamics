@@ -74,6 +74,7 @@ def train(config):
     torch.autograd.set_detect_anomaly(True)
     set_seed(train_config['random_seed'])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"device: {device}")
 
     os.makedirs(train_config['out_dir'], exist_ok=True)
     os.makedirs(os.path.join(train_config['out_dir'], 'checkpoints'), exist_ok=True)

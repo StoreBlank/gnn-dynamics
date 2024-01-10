@@ -16,15 +16,8 @@ def extract_kp(data_dir, episode_idx, start_frame, end_frame):
     
     # obtain tool keypoints
     tool_ptcl = np.load(os.path.join(data_dir, f"episode_{episode_idx}/eef_states.npy"))
-    tool_kps = np.zeros((tool_ptcl.shape[0], 3))
-    for i in range(tool_ptcl.shape[0]):
-        tool_pos = tool_ptcl[i, 0:3]
-        tool_quat = tool_ptcl[i, 6:10]
-        tool_rot = quaternion_to_rotation_matrix(tool_quat)
-        tool_kps[i] = tool_pos + np.dot(tool_rot, np.array([0, 0, 1.]))
-    tool_kp = np.stack([tool_kps[start_frame], tool_kps[end_frame]], axis=0)
-    
-    # TODO: generalize to multiple tools
+    tool_ptcl_start, tool_ptcl_end = tool_ptcl[start_frame], tool_ptcl[end_frame]
+    tool_kp = np.stack([tool_ptcl_start, tool_ptcl_end], axis=0)
     
     return obj_kp, tool_kp
 
@@ -36,14 +29,9 @@ def extract_kp_single_frame(data_dir, episode_idx, frame_idx):
     obj_kp = np.array([obj_ptcl])
     
     # obtain tool keypoints
-    tool_ptcl = np.load(os.path.join(data_dir, f"episode_{episode_idx}/eef_states.npy"))
-    tool_kps = np.zeros((tool_ptcl.shape[0], 3))
-    for i in range(tool_ptcl.shape[0]):
-        tool_pos = tool_ptcl[i, 0:3]
-        tool_quat = tool_ptcl[i, 6:10]
-        tool_rot = quaternion_to_rotation_matrix(tool_quat)
-        tool_kps[i] = tool_pos + np.dot(tool_rot, np.array([0, 0, 1.]))
-    tool_kp = np.array([tool_kps[frame_idx]])
+    tool_ptcl = np.load(os.path.join(data_dir, f"episode_{episode_idx}/processed_eef_states.npy"))
+    tool_kp = tool_ptcl[frame_idx]
+    tool_kp = np.array(tool_kp)
     
     return obj_kp, tool_kp
 
@@ -226,7 +214,7 @@ def extract_eef_points(data_dir):
 
 if __name__ == "__main__":
     # i = 4
-    data_name = "carrots"
+    data_name = "carrots_test"
     data_dir_list = [
         f"/mnt/sda/data/{data_name}"
     ]

@@ -65,6 +65,7 @@ dataset_config:
         train: [0, 0.9]
         valid: [0.9, 1]
       max_n: 1
+      max_tool: 1
       max_nobj: 100
       max_ntool: 100
       max_nR: 500

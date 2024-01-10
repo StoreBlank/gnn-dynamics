@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 from dgl.geometry import farthest_point_sampler
 from utils import pad, pad_torch, fps_rad_idx
 
-from preprocess.preprocess_rope import extract_kp_single_frame
+# from preprocess.preprocess_rope import extract_kp_single_frame
 
 def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edge=False):  # helper function for construct_graph
     '''
@@ -198,6 +198,13 @@ class DynDataset(Dataset):
         state_noise = dataset_config['state_noise'][self.phase]
         phys_noise = dataset_config['phys_noise'][self.phase]
         
+        # load extract_kp_single_frame
+        dataset_name = dataset_config['name']
+        if dataset_name == "rope":
+            from preprocess.preprocess_rope import extract_kp_single_frame
+        elif dataset_name == "granular":
+            from preprocess.preprocess_granular import extract_kp_single_frame
+        
         # get history keypoints
         obj_kps, tool_kps = [], []
         for i in range(len(pair)):
@@ -208,7 +215,7 @@ class DynDataset(Dataset):
             # print(obj_kp.shape, tool_kp.shape) 
             
             obj_kps.append(obj_kp)
-            tool_kps.append(tool_kp)
+            tool_kps.append(tool_kp) # (7, num_tool_points, 3)
         
         obj_kp_start = obj_kps[n_his - 1]
         instance_num = len(obj_kp_start)
@@ -238,10 +245,11 @@ class DynDataset(Dataset):
         obj_kp_num = obj_kp_start.shape[0]
         
         # get current state delta 
+        # tool_kp: (2, num_tool_points, 3)
         tool_kp = np.stack(tool_kps[n_his-1:n_his+1], axis=0)
         tool_kp_num = tool_kp.shape[1]
-        # print(tool_kp.shape) # (2, 1, 3)
-        
+        # print(tool_kp.shape)
+            
         ## states (object + tool, 3)
         states_delta = np.zeros((max_nobj + max_ntool * max_tool, 3), dtype=np.float32)
         states_delta[max_nobj : max_nobj + tool_kp_num] = tool_kp[1] - tool_kp[0]
