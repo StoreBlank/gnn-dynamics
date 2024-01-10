@@ -16,7 +16,7 @@ import torchvision.transforms as transforms
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from gnn.model import DynamicsPredictor
+from gnn.model_2 import DynamicsPredictor
 from gnn.utils import set_seed, umeyama_algorithm
 from dataset import DynDataset, construct_edges_from_states
 
