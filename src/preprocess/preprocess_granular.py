@@ -21,10 +21,10 @@ def extract_kp(data_dir, episode_idx, start_frame, end_frame):
     
     return obj_kp, tool_kp
 
-def extract_kp_single_frame(data_dir, episode_idx, frame_idx, obj_ptcls):
+def extract_kp_single_frame(data_dir, episode_idx, frame_idx):
     # obtain object keypoints
-    # obj_ptcls = np.load(os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy"))
-    # print(f"epi_idx {episode_idx}, frame_idx {frame_idx}, obj_ptcls: {obj_ptcls.shape}")
+    obj_ptcls = np.load(os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy"))
+    print(f"epi_idx {episode_idx}, frame_idx {frame_idx}, obj_ptcls: {obj_ptcls.shape}")
     obj_ptcl = obj_ptcls[frame_idx]
     obj_kp = np.array([obj_ptcl])
     
