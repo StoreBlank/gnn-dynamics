@@ -57,8 +57,8 @@ dataset_config:
       materials: ["rope"]
       data_dir: "/mnt/sda/data/rope"
       prep_data_dir: "/mnt/sda/preprocess/rope"
-      fps_radius_range: [0.18, 0.22]
-      adj_radius_range: [0.48, 0.52]
+      fps_radius_range: [0.09, 0.11]
+      adj_radius_range: [0.24, 0.26]
       state_noise: 
         train: 0.02
         valid: 0.0

@@ -221,7 +221,7 @@ if __name__ == "__main__":
     save_dir_list = [
         f"/mnt/sda/preprocess/{data_name}"
     ]
-    dist_thresh = 0.5 #5cm
+    dist_thresh = 0.25 #2.5cm
     n_his = 4
     n_future = 3
     
