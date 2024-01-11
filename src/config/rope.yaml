@@ -1,12 +1,13 @@
 train_config:
-  out_dir: "/mnt/sda/logs/rope"
+  out_dir: "/mnt/nvme1n1p1/baoyu/logs/rope"
   phases: ["train", "valid"]
   load_model: False
   model_checkpoint: "/mnt/sda/logs/rope_new/checkpoints/latest.pth"
   optimizer_checkpoint: "/mnt/sda/logs/rope_new/checkpoints/latest_optim.pth"
+  device: "cuda"
   
   batch_size: 128
-  n_epochs: 1
+  n_epochs: 100
   n_iters_per_epoch:
     train: 1000
     valid: 100

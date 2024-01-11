@@ -34,7 +34,7 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
         adj_thresh = torch.tensor(adj_thresh, device=states.device, dtype=states.dtype).repeat(B)
     threshold = adj_thresh * adj_thresh
     # convert threshold to tensor
-    # threshold = torch.tensor(threshold, device=states.device, dtype=states.dtype)
+    threshold = torch.tensor(threshold, device=states.device, dtype=states.dtype)
     
     dis = torch.sum((s_sender - s_receiv)**2, -1)
     mask_1 = mask[:, :, None].repeat(1, 1, N)
@@ -47,7 +47,7 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
     tool_mask_12 = tool_mask_1 * tool_mask_2
     dis[tool_mask_12] = 1e10  # avoid tool to tool relations
     
-    adj_matrix = ((dis - threshold[:, None, None]) < 0).float()
+    adj_matrix = ((dis - threshold[:, None, None]) < 0).to(torch.float32)
     # print(f'adj_matrix shape: {adj_matrix.shape}') # (64, 300, 300)
     # print(adj_matrix)
     # adj_matrix = adj_matrix.to(device=states.device, dtype=states.dtype)
@@ -171,7 +171,14 @@ class DynDataset(Dataset):
             self.pair_lists.extend(pair_lists)
             self.physics_params.append(physics_params)  # [dataset_idx][episode_idx][material_name][param_idx]
 
-        self.pair_lists = np.array(self.pair_lists)       
+        self.pair_lists = np.array(self.pair_lists)     
+        
+        num_episodes = len(list(glob.glob(os.path.join(dataset_config['datasets'][0]["data_dir"], f"episode_*"))))
+        data_dir = dataset_config['datasets'][0]["data_dir"]
+        self.all_particle_pos = []
+        for episode_idx in range(num_episodes):
+            particles_pos = np.load(os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy"))
+            self.all_particle_pos.append(particles_pos)
         
     def __len__(self):
         return len(self.pair_lists)
@@ -211,7 +218,8 @@ class DynDataset(Dataset):
             frame_idx = pair[i]
             # obj_kp: (1, num_obj_points, 3)
             # tool_kp: (1, num_tool_points, 3)
-            obj_kp, tool_kp = extract_kp_single_frame(dataset_config['data_dir'], episode_idx, frame_idx)
+            obj_ptcls = self.all_particle_pos[episode_idx]
+            obj_kp, tool_kp = extract_kp_single_frame(dataset_config['data_dir'], episode_idx, frame_idx, obj_ptcls)
             # print(obj_kp.shape, tool_kp.shape) 
             
             obj_kps.append(obj_kp)

@@ -15,15 +15,15 @@ def extract_kp(data_dir, episode_idx, start_frame, end_frame):
     obj_kp = np.stack([obj_ptcl_start, obj_ptcl_end], axis=0)
     
     # obtain tool keypoints
-    tool_ptcl = np.load(os.path.join(data_dir, f"episode_{episode_idx}/eef_states.npy"))
+    tool_ptcl = np.load(os.path.join(data_dir, f"episode_{episode_idx}/processed_eef_states.npy"))
     tool_ptcl_start, tool_ptcl_end = tool_ptcl[start_frame], tool_ptcl[end_frame]
     tool_kp = np.stack([tool_ptcl_start, tool_ptcl_end], axis=0)
     
     return obj_kp, tool_kp
 
-def extract_kp_single_frame(data_dir, episode_idx, frame_idx):
+def extract_kp_single_frame(data_dir, episode_idx, frame_idx, obj_ptcls):
     # obtain object keypoints
-    obj_ptcls = np.load(os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy"))
+    # obj_ptcls = np.load(os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy"))
     # print(f"epi_idx {episode_idx}, frame_idx {frame_idx}, obj_ptcls: {obj_ptcls.shape}")
     obj_ptcl = obj_ptcls[frame_idx]
     obj_kp = np.array([obj_ptcl])
@@ -63,7 +63,10 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
     phys_params = []
     
     for epi_idx in range(num_episodes):
-        num_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/*_color.jpg"))))
+        # load particle
+        particles_pos = np.load(os.path.join(data_dir, f"episode_{epi_idx}/particles_pos.npy"))
+        num_frames = particles_pos.shape[0]
+        # num_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/*_color.jpg"))))
         print(f"Processing episode {epi_idx}, num_frames: {num_frames}")
         
         # load info
@@ -188,8 +191,10 @@ def extract_eef_points(data_dir):
     n_eef_points = eef_point_pos.shape[0]
     
     for epi_idx in range(num_episodes):
-        # load number of frames
-        num_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/*_color.jpg"))))
+        # load particle
+        particles_pos = np.load(os.path.join(data_dir, f"episode_{epi_idx}/particles_pos.npy"))
+        num_frames = particles_pos.shape[0]
+        # num_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/*_color.jpg"))))
         print(f"Processing episode {epi_idx}, num_frames: {num_frames}")
         
         # load the eef states
@@ -209,17 +214,14 @@ def extract_eef_points(data_dir):
             
         # save the processed eef states
         np.save(os.path.join(data_dir, f"episode_{epi_idx}/processed_eef_states.npy"), processed_eef_states)
-        
-        
 
 if __name__ == "__main__":
-    # i = 4
     data_name = "carrots"
     data_dir_list = [
-        f"/mnt/sda/data/{data_name}"
+        f"/mnt/nvme1n1p1/baoyu/data/{data_name}"
     ]
     save_dir_list = [
-        f"/mnt/sda/preprocess/{data_name}"
+        f"/mnt/nvme1n1p1/baoyu/preprocess/{data_name}"
     ]
     dist_thresh = 0.25 #2.5cm
     n_his = 4

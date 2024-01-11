@@ -15,35 +15,23 @@ def extract_kp(data_dir, episode_idx, start_frame, end_frame):
     obj_kp = np.stack([obj_ptcl_start, obj_ptcl_end], axis=0)
     
     # obtain tool keypoints
-    tool_ptcl = np.load(os.path.join(data_dir, f"episode_{episode_idx}/eef_states.npy"))
-    tool_kps = np.zeros((tool_ptcl.shape[0], 3))
-    for i in range(tool_ptcl.shape[0]):
-        tool_pos = tool_ptcl[i, 0:3]
-        tool_quat = tool_ptcl[i, 6:10]
-        tool_rot = quaternion_to_rotation_matrix(tool_quat)
-        tool_kps[i] = tool_pos + np.dot(tool_rot, np.array([0, 0, 1.]))
-    tool_kp = np.stack([tool_kps[start_frame], tool_kps[end_frame]], axis=0)
-    
-    # TODO: generalize to multiple tools
+    tool_ptcl = np.load(os.path.join(data_dir, f"episode_{episode_idx}/processed_eef_states.npy"))
+    tool_ptcl_start, tool_ptcl_end = tool_ptcl[start_frame], tool_ptcl[end_frame]
+    tool_kp = np.stack([tool_ptcl_start, tool_ptcl_end], axis=0)
     
     return obj_kp, tool_kp
 
-def extract_kp_single_frame(data_dir, episode_idx, frame_idx):
+def extract_kp_single_frame(data_dir, episode_idx, frame_idx, obj_ptcls):
     # obtain object keypoints
-    obj_ptcls = np.load(os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy"))
+    # obj_ptcls = np.load(os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy"))
     # print(f"epi_idx {episode_idx}, frame_idx {frame_idx}, obj_ptcls: {obj_ptcls.shape}")
     obj_ptcl = obj_ptcls[frame_idx]
     obj_kp = np.array([obj_ptcl])
     
     # obtain tool keypoints
-    tool_ptcl = np.load(os.path.join(data_dir, f"episode_{episode_idx}/eef_states.npy"))
-    tool_kps = np.zeros((tool_ptcl.shape[0], 3))
-    for i in range(tool_ptcl.shape[0]):
-        tool_pos = tool_ptcl[i, 0:3]
-        tool_quat = tool_ptcl[i, 6:10]
-        tool_rot = quaternion_to_rotation_matrix(tool_quat)
-        tool_kps[i] = tool_pos + np.dot(tool_rot, np.array([0, 0, 1.]))
-    tool_kp = np.array([tool_kps[frame_idx]])
+    tool_ptcl = np.load(os.path.join(data_dir, f"episode_{episode_idx}/processed_eef_states.npy"))
+    tool_kp = tool_ptcl[frame_idx]
+    tool_kp = np.array(tool_kp)
     
     return obj_kp, tool_kp
 
@@ -75,7 +63,10 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
     phys_params = []
     
     for epi_idx in range(num_episodes):
-        num_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/*_color.jpg"))))
+        # load particle
+        particles_pos = np.load(os.path.join(data_dir, f"episode_{epi_idx}/particles_pos.npy"))
+        num_frames = particles_pos.shape[0]
+        # num_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/*_color.jpg"))))
         print(f"Processing episode {epi_idx}, num_frames: {num_frames}")
         
         # load info
@@ -179,94 +170,46 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
     print(f"phys_params_range: {phys_params_range}")
     np.savetxt(os.path.join(save_dir, "phys_range.txt"), phys_params_range)
     
-def extract_tool_points(data_dir, tool_names, tool_scale, tool_sample_points=100, max_ntool=100, vis=False):
+def extract_eef_points(data_dir):
+    # calculate the number of episodes folder in the data directory
     num_episodes = len(list(glob.glob(os.path.join(data_dir, f"episode_*"))))
-    print(f"Preprocessing tool starts. Number of episodes: {num_episodes}")
+    print(f"Preprocessing starts. Number of episodes: {num_episodes}")
     
-    n_tools = len(tool_names)
-    print(f"There are {n_tools} tools: {tool_names}")
+    eef_point_pos = np.array([[0., 0., 1.]])
+    n_eef_points = eef_point_pos.shape[0]
     
     for epi_idx in range(num_episodes):
-        num_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/*_color.jpg"))))
+        # load particle
+        particles_pos = np.load(os.path.join(data_dir, f"episode_{epi_idx}/particles_pos.npy"))
+        num_frames = particles_pos.shape[0]
+        # num_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/*_color.jpg"))))
         print(f"Processing episode {epi_idx}, num_frames: {num_frames}")
         
-        # load the tool mesh and get the initial point cloud
-        tool_mesh_dir = os.path.join(data_dir, f"geometries/tools")
-        tool_surface_points_list = []
-        for i in range(n_tools):
-            # convert mesh to point cloud
-            tool_mesh_path = os.path.join(tool_mesh_dir, f'{tool_names[i]}.obj')
-            tool_mesh = o3d.io.read_triangle_mesh(tool_mesh_path)
-            
-            tool_surface = o3d.geometry.TriangleMesh.sample_points_poisson_disk(tool_mesh, 10000)
-            # tool_surface = o3d.geometry.TriangleMesh.sample_points_uniformly(tool_mesh, sample_points)
-            if vis:
-                o3d.visualization.draw_geometries([tool_surface])
-            
-            # rescale the point cloud
-            tool_surface.points = o3d.utility.Vector3dVector(np.asarray(tool_surface.points) * tool_scale[i])
-            tool_surface_points = np.asarray(tool_surface.points)
-            
-            # fps sampling
-            particle_tensor = torch.from_numpy(tool_surface_points).float().unsqueeze(0)
-            fps_idx_tensor = farthest_point_sampler(particle_tensor, tool_sample_points)[0]
-            fps_idx_1 = fps_idx_tensor.numpy().astype(np.int32)
-            
-            # downsample to uniform radius
-            downsample_particle = particle_tensor[0, fps_idx_1, :].numpy()
-            fps_radius = 0.1
-            _, fps_idx_2 = fps_rad_idx(downsample_particle, fps_radius)
-            fps_idx_2 = fps_idx_2.astype(np.int32)
-            fps_idx = fps_idx_1[fps_idx_2]
-            print(f'tool {tool_names[i]} has {fps_idx.shape[0]} sample points.')
-            
-            # obtain fps tool surface points
-            tool_surface_points = tool_surface_points[fps_idx]
-            # pad to max_ntool
-            tool_surface_points = pad(tool_surface_points, max_ntool)
-            if vis:
-                o3d.visualization.draw_geometries([o3d.geometry.PointCloud(o3d.utility.Vector3dVector(tool_surface_points))])
-            
-            tool_surface_points_list.append(tool_surface_points)
+        # load the eef states
+        eef_states = np.load(os.path.join(data_dir, f"episode_{epi_idx}/eef_states.npy"))
+        assert eef_states.shape[0] == num_frames
         
-        # obtain the tool points for each frame
-        all_tool_points = np.zeros((n_tools, num_frames, max_ntool, 3))
-        for i in range(n_tools):
-            tool_i_frame_points = []
-            for frame_idx in range(num_frames):
-                # load init tool surface
-                tool_surface_f = o3d.geometry.PointCloud()
-                tool_surface_f.points = o3d.utility.Vector3dVector(tool_surface_points_list[i])
-                
-                # load the pos and orientation of the tool
-                tool_points_path = os.path.join(data_dir, f"episode_{epi_idx}/{tool_names[i]}_states.npy")
-                tool_points = np.load(tool_points_path)
-                
-                tool_ori = tool_points[frame_idx, 3:]
-                tool_rot = quaternion_to_rotation_matrix(tool_ori)
-                tool_surface_f.rotate(tool_rot)
-                
-                tool_pos = tool_points[frame_idx, :3]
-                tool_surface_f.translate(tool_pos)
-                
-                tool_i_frame_points.append(np.asarray(tool_surface_f.points))
+        # extract eef points
+        processed_eef_states = np.zeros((num_frames, n_eef_points, 3))
+        for frame_idx in range(num_frames):
+            eef_state = eef_states[frame_idx]
+            eef_pos_0 = eef_state[0:3]
+            eef_quat = eef_state[6:10]
+            eef_rot = quaternion_to_rotation_matrix(eef_quat)
+            for j in range(n_eef_points):
+                eef_pos = eef_pos_0 + np.dot(eef_rot, eef_point_pos[j])
+                processed_eef_states[frame_idx, j] = eef_pos
             
-            all_tool_points[i] = np.stack(tool_i_frame_points, axis=0)
+        # save the processed eef states
+        np.save(os.path.join(data_dir, f"episode_{epi_idx}/processed_eef_states.npy"), processed_eef_states)
         
-        # save the tool points to the data_dir
-        for idx, tool_name in enumerate(tool_names):
-            np.save(os.path.join(data_dir, f"episode_{epi_idx}/{tool_name}_points.npy"), all_tool_points[idx])
-            print(f"Tool {tool_name} points saved to {data_dir}/episode_{epi_idx}/{tool_name}_points.npy")
-        
-
 if __name__ == "__main__":
-    # i = 4
     data_name = "rope"
     data_dir_list = [
-        f"/mnt/sda/data/{data_name}"
+        f"/mnt/nvme1n1p1/baoyu/data/{data_name}"
     ]
     save_dir_list = [
-        f"/mnt/sda/preprocess/{data_name}"
+        f"/mnt/nvme1n1p1/baoyu/preprocess/{data_name}"
     ]
     dist_thresh = 0.25 #2.5cm
     n_his = 4
@@ -277,6 +220,9 @@ if __name__ == "__main__":
             os.makedirs(save_dir, exist_ok=True)
             print("================extract_pushes================")
             extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
+            print("==============================================")
+            print("================extract eef================")
+            extract_eef_points(data_dir)
             print("==============================================")
         # save metadata
         os.makedirs(save_dir, exist_ok=True)
