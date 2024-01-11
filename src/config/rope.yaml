@@ -61,14 +61,14 @@ dataset_config:
       fps_radius_range: [0.18, 0.22]
       adj_radius_range: [0.48, 0.52]
       state_noise: 
-        train: 0.02
+        train: 0.05
         valid: 0.0
       phys_noise: 
         train: 0.0
         valid: 0.0
       ratio: 
         train: [0, 0.9]
-        valid: [0.9, 1]
+        valid: [0, 0.1]
       max_n: 1
       max_tool: 1
       max_nobj: 100

@@ -73,7 +73,7 @@ dataset_config:
       max_tool: 1
       max_nobj: 100
       max_ntool: 5
-      max_nR: 500
+      max_nR: 1000
 
 material_config:
   material_index:

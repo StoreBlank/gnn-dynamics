@@ -7,7 +7,7 @@ import json
 import argparse
 import yaml
 
-from gnn.model import DynamicsPredictor
+from gnn.model_2 import DynamicsPredictor
 from gnn.utils import set_seed, umeyama_algorithm
 
 import open3d as o3d
