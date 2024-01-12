@@ -9,8 +9,6 @@ from torch.utils.data import Dataset
 from dgl.geometry import farthest_point_sampler
 from utils import pad, pad_torch, fps_rad_idx
 
-# from preprocess.preprocess_rope import extract_kp_single_frame
-
 def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edge=False):  # helper function for construct_graph
     '''
     # :param states: (B, N+2M, state_dim) torch tensor
@@ -171,7 +169,19 @@ class DynDataset(Dataset):
             self.pair_lists.extend(pair_lists)
             self.physics_params.append(physics_params)  # [dataset_idx][episode_idx][material_name][param_idx]
 
-        self.pair_lists = np.array(self.pair_lists)     
+        self.pair_lists = np.array(self.pair_lists) 
+        
+        num_episodes = len(list(glob.glob(os.path.join(dataset_config['datasets'][0]["data_dir"], f"episode_*"))))
+        data_dir = dataset_config['datasets'][0]["data_dir"]
+        
+        # save all particles and tool states
+        self.all_particle_pos = []
+        self.all_tool_states = []
+        for episode_idx in range(num_episodes):
+            particles_pos = np.load(os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy"))
+            tool_states = np.load(os.path.join(data_dir, f"episode_{episode_idx}/processed_eef_states.npy"))
+            self.all_particle_pos.append(particles_pos) 
+            self.all_tool_states.append(tool_states)
         
     def __len__(self):
         return len(self.pair_lists)
@@ -210,9 +220,15 @@ class DynDataset(Dataset):
         for i in range(len(pair)):
             frame_idx = pair[i]
             # obj_kp: (1, num_obj_points, 3)
-            # tool_kp: (1, num_tool_points, 3)
-            obj_kp, tool_kp = extract_kp_single_frame(dataset_config['data_dir'], episode_idx, frame_idx)
+            # tool_kp: (num_tool_points, 3)
+            # obj_ptcls = self.all_particle_pos[episode_idx]
+            # obj_kp, tool_kp = extract_kp_single_frame(dataset_config['data_dir'], episode_idx, frame_idx)
             # print(obj_kp.shape, tool_kp.shape) 
+            
+            obj_kp = self.all_particle_pos[episode_idx][frame_idx][None] # (1, num_obj_points, 3)
+            tool_kp = self.all_tool_states[episode_idx][frame_idx] # (num_tool_points, 3)
+            
+            # print(obj_kp.shape, tool_kp.shape)
             
             obj_kps.append(obj_kp)
             tool_kps.append(tool_kp) # (7, num_tool_points, 3)
