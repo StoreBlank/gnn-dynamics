@@ -208,13 +208,6 @@ class DynDataset(Dataset):
         state_noise = dataset_config['state_noise'][self.phase]
         phys_noise = dataset_config['phys_noise'][self.phase]
         
-        # load extract_kp_single_frame
-        dataset_name = dataset_config['name']
-        if dataset_name == "rope":
-            from preprocess.preprocess_rope import extract_kp_single_frame
-        elif dataset_name == "granular":
-            from preprocess.preprocess_granular import extract_kp_single_frame
-        
         # get history keypoints
         obj_kps, tool_kps = [], []
         for i in range(len(pair)):
