@@ -206,14 +206,14 @@ def extract_eef_points(data_dir):
 if __name__ == "__main__":
     data_name = "rope"
     data_dir_list = [
-        # f"/mnt/nvme1n1p1/baoyu/data/{data_name}"
-        f"/mnt/sda/data/{data_name}"
+        f"/mnt/nvme1n1p1/baoyu/data/{data_name}"
+        # f"/mnt/sda/data/{data_name}"
     ]
     save_dir_list = [
-        # f"/mnt/nvme1n1p1/baoyu/preprocess/{data_name}"
-        f"/mnt/sda/preprocess/{data_name}"
+        f"/mnt/nvme1n1p1/baoyu/preprocess_010/{data_name}"
+        # f"/mnt/sda/preprocess/{data_name}"
     ]
-    dist_thresh = 0.25 #2.5cm
+    dist_thresh = 0.10 #(1.0cm, 2.5cm)
     n_his = 4
     n_future = 3
     
