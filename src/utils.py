@@ -2,6 +2,7 @@ import os
 import numpy as np
 import cv2
 import torch
+import PIL.Image as Image
 
 def fps_rad_idx(pcd, radius):
     # pcd: (n, 3) numpy array
@@ -95,3 +96,27 @@ def vis_points(points, intr, extr, img, point_size=3, point_color=(0, 0, 255)):
                    point_color, -1)
     
     return point_proj, img
+
+def merge_video(image_path, image_type, out_path, fps):
+    f_names = os.listdir(image_path)
+    image_names = []
+    for f_name in f_names:
+        if f'_{image_type}.jpg' in f_name:
+            image_names.append(f_name)
+
+    image_names.sort(key=lambda x: int(x.split('_')[0]))
+
+    fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
+    # fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    
+    img = Image.open(os.path.join(image_path, image_names[0]))
+
+    video_writer = cv2.VideoWriter(out_path, fourcc, fps, img.size)
+
+    for img_name in image_names:
+        img = cv2.imread(os.path.join(image_path, img_name))
+        video_writer.write(img)
+
+    # print("Video merged!")
+
+    video_writer.release()

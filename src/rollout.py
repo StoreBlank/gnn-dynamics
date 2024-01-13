@@ -20,7 +20,7 @@ import glob
 from dgl.geometry import farthest_point_sampler
 
 from dataset import construct_edges_from_states, load_dataset
-from utils import rgb_colormap, fps_rad_idx, pad, vis_points
+from utils import rgb_colormap, fps_rad_idx, pad, vis_points, merge_video
 from train import truncate_graph
 
 
@@ -536,17 +536,29 @@ def rollout_episode(model, device, dataset, material_config, pairs, episode_idx,
     np.savetxt(os.path.join(save_dir, f'error.txt'), error_list)
 
     # vis
+    # for cam in range(4):
+    #     img_path = os.path.join(save_dir, f"camera_{cam}")
+    #     frame_rate = 4
+    #     height = 360
+    #     width = 640
+    #     pred_out_path = os.path.join(img_path, "pred.mp4")
+    #     # ffmpeg -loglevel panic -r 4 -f image2 -s 640x360 -pattern_type glob -i '/mnt/nvme1n1p1/baoyu/vis/rollout-rope-model_100/rope/900/long/camera_0/*_pred.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p /mnt/nvme1n1p1/baoyu/vis/rollout-rope-model_100/rope/900/long/camera_0/pred.mp4 -y
+    #     os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_pred.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {pred_out_path} -y")
+    #     gt_out_path = os.path.join(img_path, "gt.mp4")
+    #     os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_gt.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {gt_out_path} -y")
+    #     both_out_path = os.path.join(img_path, "both.mp4")
+    #     os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_both.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {both_out_path} -y")
+    
+    # vis
     for cam in range(4):
         img_path = os.path.join(save_dir, f"camera_{cam}")
-        frame_rate = 4
-        height = 360
-        width = 640
+        fps = 20
         pred_out_path = os.path.join(img_path, "pred.mp4")
-        os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_pred.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {pred_out_path} -y")
+        merge_video(img_path, 'pred', pred_out_path, fps)
         gt_out_path = os.path.join(img_path, "gt.mp4")
-        os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_gt.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {gt_out_path} -y")
+        merge_video(img_path, 'gt', gt_out_path, fps)
         both_out_path = os.path.join(img_path, "both.mp4")
-        os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_both.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {both_out_path} -y")
+        merge_video(img_path, 'both', both_out_path, fps)
 
     return error_list
 
@@ -559,13 +571,15 @@ def rollout_episode_pushes(model, device, dataset, material_config, pairs, episo
 
     # load pushes
     steps = np.load(os.path.join(dataset['data_dir'], f"episode_{episode_idx}", "steps.npy"))
-    steps = np.concatenate([[0], steps[:-1]], axis=0)
 
     error_list_pushes = []
-
-    for i in range(len(steps)):
-        valid_pairs = pairs[pairs[:, 0] == steps[i] + 2]
-        assert len(valid_pairs) > 0
+    for i in range(len(steps)-1):
+        # set valid pairs, which the first frame is the current step
+        valid_pairs = pairs[pairs[:, 0] == steps[i]]
+        try:
+            assert len(valid_pairs) > 0
+        except:
+            import ipdb; ipdb.set_trace()
         pair = valid_pairs[0]
 
         start = pair[n_his-1]
@@ -676,7 +690,7 @@ def rollout_dataset(model, device, dataset, material_config, save_dir):
         plt.close()
 
 
-def rollout(config, epoch):
+def rollout(config, epoch, out_dir_root):
     train_config = config['train_config']
     dataset_config = config['dataset_config']
     model_config = config['model_config']
@@ -686,7 +700,8 @@ def rollout(config, epoch):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     run_name = train_config['out_dir'].split('/')[-1]
-    save_dir = f"/mnt/sda/vis/rollout-{run_name}-model_{epoch}"
+    save_dir = os.path.join(out_dir_root, f"rollout-{run_name}-model_{epoch}")
+    # save_dir = f"/mnt/sda/vis/rollout-{run_name}-model_{epoch}"
     os.makedirs(save_dir, exist_ok=True)
     checkpoint_dir = os.path.join(train_config['out_dir'], 'checkpoints', 'model_{}.pth'.format(epoch))
 
@@ -724,4 +739,5 @@ if __name__ == "__main__":
     with open(args.config, 'r') as f:
         config = yaml.load(f, Loader=yaml.CLoader)
 
-    rollout(config, args.epoch)
+    out_dir_root = f"/mnt/nvme1n1p1/baoyu/vis"
+    rollout(config, args.epoch, out_dir_root)

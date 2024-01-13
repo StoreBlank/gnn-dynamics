@@ -180,6 +180,7 @@ class DynDataset(Dataset):
         for episode_idx in range(num_episodes):
             particles_pos = np.load(os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy"))
             tool_states = np.load(os.path.join(data_dir, f"episode_{episode_idx}/processed_eef_states.npy"))
+            # print(f'episode {episode_idx}: tool_states shape: {tool_states.shape}.')
             self.all_particle_pos.append(particles_pos) 
             self.all_tool_states.append(tool_states)
         

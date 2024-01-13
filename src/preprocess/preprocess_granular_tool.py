@@ -144,7 +144,9 @@ def extract_tool_points(data_dir, tool_name, tool_scale, tool_sample_points=100,
     print(f"Preprocessing tool starts. Number of episodes: {num_episodes}")
     
     for epi_idx in range(num_episodes):
-        num_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/*_color.jpg"))))
+        particles_pos = np.load(os.path.join(data_dir, f"episode_{epi_idx}/particles_pos.npy"))
+        num_frames = particles_pos.shape[0]
+        # num_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/*_color.jpg"))))
         print(f"Processing episode {epi_idx}, num_frames: {num_frames}")
         
         ## get initial tool index
@@ -178,7 +180,7 @@ def extract_tool_points(data_dir, tool_name, tool_scale, tool_sample_points=100,
         tool_surface_points = tool_surface_points[fps_idx]
         
         # translate and rotate the tool surface for each frame
-        all_tool_points = []
+        all_tool_points = np.zeros((num_frames, tool_surface_points.shape[0], 3))
         for i in range(2, num_frames):
             # load tool surface
             tool_surface_i = o3d.geometry.PointCloud()
@@ -195,19 +197,22 @@ def extract_tool_points(data_dir, tool_name, tool_scale, tool_sample_points=100,
             tool_pos = tool_points[i, :3]
             tool_surface_i.translate(tool_pos)
 
-            all_tool_points.append(np.asarray(tool_surface_i.points))
+            all_tool_points[i] = np.asarray(tool_surface_i.points)
         
         # save the tool points to the data_dir
         np.save(os.path.join(data_dir, f"episode_{epi_idx}/processed_eef_states.npy"), all_tool_points)
+        print(f"Episode {epi_idx}: {all_tool_points.shape}")
 
 if __name__ == "__main__":
     # i = 4
     data_name = "granular_sweeping"
     data_dir_list = [
-        f"/mnt/sda/data/{data_name}"
+        # f"/mnt/sda/data/{data_name}"
+        f"/mnt/nvme1n1p1/baoyu/data/{data_name}"
     ]
     save_dir_list = [
-        f"/mnt/sda/preprocess/{data_name}"
+        # f"/mnt/sda/preprocess/{data_name}"
+        f"/mnt/nvme1n1p1/baoyu/preprocess_010/{data_name}"
     ]
     dist_thresh = 0.10 #1cm
     n_his = 4
@@ -218,9 +223,9 @@ if __name__ == "__main__":
     for data_dir, save_dir in zip(data_dir_list, save_dir_list):
         if os.path.isdir(data_dir):
             os.makedirs(save_dir, exist_ok=True)
-            print("================extract_pushes================")
-            extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
-            print("==============================================")
+            # print("================extract_pushes================")
+            # extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
+            # print("==============================================")
             print("================extract_tool_points================")
             extract_tool_points(data_dir, tool_names[0], tool_scale[0])
             print("==============================================")

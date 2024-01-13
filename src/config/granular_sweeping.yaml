@@ -1,11 +1,17 @@
 train_config:
-  out_dir: "/mnt/sda/logs/granular_sweeping_dustpan"
+  # out_dir: "/mnt/sda/logs/rope"
+  out_dir: "/mnt/nvme1n1p1/baoyu/logs/granular_sweeping"
   phases: ["train", "valid"]
+  load_model: False
+  model_checkpoint: "/mnt/sda/logs/rope/checkpoints/latest.pth"
+  optimizer_checkpoint: "/mnt/sda/logs/rope/checkpoints/latest_optim.pth"
+  device: "cuda:1"
+  
   batch_size: 128
   n_epochs: 100
   n_iters_per_epoch:
-    train: 250
-    valid: 25
+    train: 1000
+    valid: 100
   log_interval: 50
   random_seed: 42
   n_his: 4
@@ -49,14 +55,16 @@ model_config:
 
 dataset_config:
   datasets:
-    - name: "granular_sweeping_dustpan"
+    - name: "granular"
       materials: ["granular"]
-      data_dir: "/mnt/sda/data/granular_sweeping_dustpan"
-      prep_data_dir: "/mnt/sda/preprocess/granular_sweeping_dustpan"
-      fps_radius_range: [0.09, 0.11]
-      adj_radius_range: [0.14, 0.16]
+      # data_dir: "/mnt/sda/data/rope"
+      # prep_data_dir: "/mnt/sda/preprocess/rope"
+      data_dir: "/mnt/nvme1n1p1/baoyu/data/granular_sweeping"
+      prep_data_dir: "/mnt/nvme1n1p1/baoyu/preprocess_010/granular_sweeping"
+      fps_radius_range: [0.18, 0.22]
+      adj_radius_range: [0.28, 0.32]
       state_noise: 
-        train: 0.01
+        train: 0.04
         valid: 0.0
       phys_noise: 
         train: 0.0
@@ -67,8 +75,8 @@ dataset_config:
       max_n: 1
       max_tool: 1
       max_nobj: 100
-      max_ntool: 100
-      max_nR: 500
+      max_ntool: 20
+      max_nR: 1000
 
 material_config:
   material_index:
@@ -85,21 +93,21 @@ material_config:
         max: 5000.
       - name: "granular_scale"
         use: True
-        min: 0.05
-        max: 0.15
+        min: 0.1
+        max: 0.2
       - name: "num_granular"
         use: False
-        min: 0.
-        max: 200.
+        min: 8.
+        max: 484.
       - name: "distribution_r"
         use: False
-        min: 0.
-        max: 1.
+        min: 0.1
+        max: 0.3
       - name: "dynamic_friction"
         use: True
-        min: 2.
-        max: 8.
+        min: 0.2
+        max: 0.9
       - name: "granular_mass"
         use: True
-        min: 0.
-        max: 1.
+        min: 0.01
+        max: 0.1
