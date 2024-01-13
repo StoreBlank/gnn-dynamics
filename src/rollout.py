@@ -175,7 +175,7 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
 
 
 # component functions for rollout
-def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_config):
+def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_config, all_particles_pos, all_tool_states):
     max_n = dataset['max_n']
     max_tool = dataset['max_tool']
     max_nobj = dataset['max_nobj']
@@ -183,12 +183,6 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
     max_nR = dataset['max_nR']
     fps_radius = (dataset['fps_radius_range'][0] + dataset['fps_radius_range'][1]) / 2
     adj_thresh = (dataset['adj_radius_range'][0] + dataset['adj_radius_range'][1]) / 2
-
-    data_name = dataset['name']
-    if data_name == 'rope':
-        from preprocess.preprocess_rope import extract_kp_single_frame
-    elif data_name == 'granular':
-        from preprocess.preprocess_granular import extract_kp_single_frame
     
     ### construct graph ###
 
@@ -196,7 +190,9 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
     obj_kps, tool_kps = [], []
     for i in range(len(pair)):
         frame_idx = pair[i]
-        obj_kp, tool_kp = extract_kp_single_frame(dataset["data_dir"], episode_idx, frame_idx)
+        # obj_kp, tool_kp = extract_kp_single_frame(dataset["data_dir"], episode_idx, frame_idx)
+        obj_kp = all_particles_pos[episode_idx][frame_idx][None] # (1, num_obj_points, 3)
+        tool_kp = all_tool_states[episode_idx][frame_idx] # (num_tool_points, 3)
 
         obj_kps.append(obj_kp)
         tool_kps.append(tool_kp)
@@ -379,7 +375,7 @@ def get_next_pair_or_break_episode_pushes(pairs, n_his, n_frames, current_end):
 
 
 def rollout_from_start_graph(graph, model, material_config, device, dataset, episode_idx, current_start, current_end, 
-        get_next_pair_or_break_func, fps_idx_list, pairs, save_dir):
+        get_next_pair_or_break_func, fps_idx_list, pairs, save_dir, all_particles_pos, all_tool_states):
 
     obj_mask = graph['obj_mask'].numpy()
     obj_kp_num = obj_mask.sum()
@@ -414,20 +410,15 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
             max_ntool = dataset['max_ntool']
             max_nR = dataset['max_nR']
             adj_thresh = (dataset['adj_radius_range'][0] + dataset['adj_radius_range'][1]) / 2
-            
-            data_name = dataset['name']
-            if data_name == 'rope':
-                from preprocess.preprocess_rope import extract_kp_single_frame
-            elif data_name == 'granular':
-                from preprocess.preprocess_granular import extract_kp_single_frame
 
             graph = truncate_graph(graph)
             pred_state, pred_motion = model(**graph)
             pred_state = pred_state.detach().cpu().numpy()
 
             # prepare gt
-            gt_state, _ = extract_kp_single_frame(dataset["data_dir"], episode_idx, current_end)
+            # gt_state, _ = extract_kp_single_frame(dataset["data_dir"], episode_idx, current_end)
             # gt_state = [gt_state]
+            gt_state = all_particles_pos[episode_idx][current_end][None] # (1, num_obj_points, 3)
             gt_state = [gt_state[j][fps_idx] for j, fps_idx in enumerate(fps_idx_list)]
             gt_state = np.concatenate(gt_state, axis=0)
             gt_state = pad(gt_state, max_nobj)
@@ -453,8 +444,8 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
 
             # generate next graph
             # load tool kypts
-            _, tool_kp_start = extract_kp_single_frame(dataset["data_dir"], episode_idx, current_start)
-            _, tool_kp_end = extract_kp_single_frame(dataset["data_dir"], episode_idx, current_end)
+            tool_kp_start = all_tool_states[episode_idx][current_start] # (num_tool_points, 3)
+            tool_kp_end = all_tool_states[episode_idx][current_end] # (num_tool_points, 3)
 
             tool_kp_num = tool_kp_start.shape[0]
 
@@ -515,7 +506,7 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
     return error_list
 
 
-def rollout_episode(model, device, dataset, material_config, pairs, episode_idx, physics_param, save_dir):
+def rollout_episode(model, device, dataset, material_config, pairs, episode_idx, physics_param, save_dir, all_particles_pos, all_tool_states):
     n_his = model.model_config['n_his']
 
     # state_noise = 0.0
@@ -527,10 +518,10 @@ def rollout_episode(model, device, dataset, material_config, pairs, episode_idx,
     start = pair[n_his-1]
     end = pair[n_his]
 
-    graph, fps_idx_list = construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_config)
+    graph, fps_idx_list = construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_config, all_particles_pos, all_tool_states)
     
     error_list = rollout_from_start_graph(graph, model, material_config, device, dataset, episode_idx, start, end, 
-            get_next_pair_or_break_episode, fps_idx_list, pairs, save_dir)
+            get_next_pair_or_break_episode, fps_idx_list, pairs, save_dir, all_particles_pos, all_tool_states)
 
     # plot error
     plt.figure(figsize=(10, 5))
@@ -560,7 +551,7 @@ def rollout_episode(model, device, dataset, material_config, pairs, episode_idx,
     return error_list
 
 
-def rollout_episode_pushes(model, device, dataset, material_config, pairs, episode_idx, physics_param, save_dir):
+def rollout_episode_pushes(model, device, dataset, material_config, pairs, episode_idx, physics_param, save_dir, all_particles_pos, all_tool_states):
     n_his = model.model_config['n_his']
 
     # state_noise = 0.0
@@ -580,10 +571,10 @@ def rollout_episode_pushes(model, device, dataset, material_config, pairs, episo
         start = pair[n_his-1]
         end = pair[n_his]
 
-        graph, fps_idx_list = construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_config)
+        graph, fps_idx_list = construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_config, all_particles_pos, all_tool_states)
         
         error_list = rollout_from_start_graph(graph, model, material_config, device, dataset, episode_idx, start, end, 
-                get_next_pair_or_break_episode_pushes, fps_idx_list, pairs, save_dir)
+                get_next_pair_or_break_episode_pushes, fps_idx_list, pairs, save_dir, all_particles_pos, all_tool_states)
         
         error_list_pushes.append(error_list)
 
@@ -618,6 +609,17 @@ def rollout_episode_pushes(model, device, dataset, material_config, pairs, episo
 def rollout_dataset(model, device, dataset, material_config, save_dir):
     pair_lists, physics_params = load_dataset(dataset, material_config, phase='valid')
     print(f'Loaded {len(pair_lists)} pairs from {dataset["name"]}')
+    
+    # load all particles and tool states
+    data_dir = dataset['data_dir']
+    num_episodes = len(list(glob.glob(os.path.join(data_dir, f"episode_*"))))
+    all_particles_pos = []
+    all_tool_states = []
+    for episode_idx in range(num_episodes):
+        particles_pos = np.load(os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy"))
+        tool_states = np.load(os.path.join(data_dir, f"episode_{episode_idx}/processed_eef_states.npy"))
+        all_particles_pos.append(particles_pos)
+        all_tool_states.append(tool_states)
 
     total_error_long = []
     total_error_short = []
@@ -630,13 +632,13 @@ def rollout_dataset(model, device, dataset, material_config, save_dir):
         save_dir_episode = os.path.join(save_dir, f"{episode_idx}", "long")
         os.makedirs(save_dir_episode, exist_ok=True)
         error_list_long = rollout_episode(model, device, dataset, material_config, pair_lists_episode, episode_idx, 
-                    physics_params_episode, save_dir_episode)
+                    physics_params_episode, save_dir_episode, all_particles_pos, all_tool_states)
         total_error_long.append(error_list_long)
         
         save_dir_episode_pushes = os.path.join(save_dir, f"{episode_idx}", "short")
         os.makedirs(save_dir_episode_pushes, exist_ok=True)
         error_list_short = rollout_episode_pushes(model, device, dataset, material_config, pair_lists_episode, episode_idx,
-                    physics_params_episode, save_dir_episode_pushes)
+                    physics_params_episode, save_dir_episode_pushes, all_particles_pos, all_tool_states)
         total_error_short.extend(error_list_short)
 
     
