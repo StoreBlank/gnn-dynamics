@@ -53,13 +53,14 @@ def truncate_graph(data):
     data['Rs'] = data['Rs'][:, :max_n, :]
     return data
 
-def construct_relations(states, state_mask, tool_mask, adj_thresh_range=[0.1, 0.2], max_nR=500, adjacency=None):
+def construct_relations(states, state_mask, tool_mask, adj_thresh_range=[0.1, 0.2], max_nR=500, adjacency=None, pushing_direction=None):
     # construct relations (density as hyperparameter)
     bsz = states.shape[0] # states: B, n_his, N, 3
     adj_thresh = np.random.uniform(*adj_thresh_range, (bsz,))
     
     Rr, Rs = construct_edges_from_states(states[:, -1], adj_thresh,
-                                         mask=state_mask, tool_mask=tool_mask, no_self_edge=True)
+                                         mask=state_mask, tool_mask=tool_mask, no_self_edge=True,
+                                         pushing_direction=pushing_direction)
     assert Rr[:, -1].sum() > 0
     Rr, Rs = Rr.detach(), Rs.detach()
     return Rr, Rs
@@ -153,7 +154,8 @@ def train(config):
                         
                         # construct edges/relations
                         data['Rr'], data['Rs'] = construct_relations(data['state'], state_mask, tool_mask,
-                                            adj_thresh_range=dataset_config['datasets'][0]['adj_radius_range'],)
+                                            adj_thresh_range=dataset_config['datasets'][0]['adj_radius_range'],
+                                            pushing_direction=data['pushing_direction'])
                         # print(f"Rr: {data['Rr'].shape}, Rs: {data['Rs'].shape}")
                         # print(f"number of states: {data['state_future'].shape}")
                         

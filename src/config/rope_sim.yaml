@@ -1,0 +1,109 @@
+train_config:
+  # out_dir: "/mnt/sda/logs/rope"
+  out_dir: "/mnt/nvme1n1p1/baoyu/logs/rope"
+  phases: ["train", "valid"]
+  load_model: False
+  model_checkpoint: "/mnt/sda/logs/rope/checkpoints/latest.pth"
+  optimizer_checkpoint: "/mnt/sda/logs/rope/checkpoints/latest_optim.pth"
+  device: "cuda"
+  
+  batch_size: 64
+  n_epochs: 1
+  n_iters_per_epoch:
+    train: 1000
+    valid: 100
+  log_interval: 50
+  random_seed: 42
+  n_his: 4
+  n_future: 3
+
+model_config:
+  verbose: False
+
+  nf_particle: 150
+  nf_relation: 150
+  nf_effect: 150
+
+  nf_physics_hidden: 20
+  nf_physics: 10
+
+  # particle encoder
+  attr_dim: 2  # object and end effector
+  state_dim: 0  # x, y, z
+  offset_dim: 0
+  action_dim: 3
+  pstep: 3
+  sequence_length: 4
+  density_dim: 0  # particle density
+
+  # rel encoder
+  rel_particle_dim: 0
+  rel_attr_dim: 2
+  rel_group_dim: 1  # sum of difference of group one-hot vector
+  rel_distance_dim: 3
+  rel_density_dim: 0
+
+  # canonical
+  # rel_can_attr_dim: 0
+  # rel_canonical_distance_dim: 0
+  # rel_canonical_attr_dim: 0
+  # rel_canonical_thresh: 0
+
+  # phys encoding
+  use_vae: False
+  phys_encode: False
+
+dataset_config:
+  datasets:
+    - name: "rope"
+      materials: ["rope"]
+      # data_dir: "/mnt/sda/data/rope"
+      # prep_data_dir: "/mnt/sda/preprocess/rope"
+      data_dir: "/mnt/nvme1n1p1/baoyu/data/rope"
+      prep_data_dir: "/mnt/nvme1n1p1/baoyu/preprocess_010/rope"
+      fps_radius_range: [0.18, 0.22]
+      adj_radius_range: [0.48, 0.52]
+      state_noise: 
+        train: 0.05
+        valid: 0.0
+      phys_noise: 
+        train: 0.0
+        valid: 0.0
+      ratio: 
+        train: [0, 0.9]
+        valid: [0.9, 1]
+      max_n: 1
+      max_tool: 1
+      max_nobj: 100
+      max_ntool: 1
+      max_nR: 2000
+
+material_config:
+  material_index:
+    rope: 0
+  rope:
+    physics_params: 
+      - name: "particle_radius"
+        use: False
+        min: 0.
+        max: 1.
+      - name: "num_particles"
+        use: False
+        min: 0.
+        max: 5000.
+      - name: "length"
+        use: False
+        min: 2.5
+        max: 5.0
+      - name: "thickness"
+        use: True
+        min: 2.5
+        max: 4.0
+      - name: "dynamic_friction"
+        use: True
+        min: 0.1
+        max: 0.45
+      - name: "cluster_spacing"
+        use: True
+        min: 2.0
+        max: 8.0

@@ -245,6 +245,9 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
     states_delta = np.zeros((max_nobj + max_ntool * max_tool, obj_kp_start.shape[-1]), dtype=np.float32)
     states_delta[max_nobj : max_nobj + tool_kp_num] = tool_kp[1] - tool_kp[0]
 
+    # new: get pushing direction
+    pushing_direction = states_delta[max_nobj]  # (3,)
+
     # get masks
     state_mask = np.zeros((max_nobj + max_ntool * max_tool), dtype=bool)
     state_mask[:obj_kp_num] = True # obj
@@ -298,10 +301,12 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
     tool_mask = torch.from_numpy(tool_mask)
     obj_mask = torch.from_numpy(obj_mask)
     tool_kp = torch.from_numpy(tool_kp).float()
+    pushing_direction = torch.from_numpy(pushing_direction).float()
 
     # construct relations (density as hyperparameter)
     Rr, Rs = construct_edges_from_states(state_history[-1][None], adj_thresh, 
-                mask=state_mask[None], tool_mask=tool_mask[None], no_self_edge=True)
+                mask=state_mask[None], tool_mask=tool_mask[None], no_self_edge=True, 
+                pushing_direction=pushing_direction[None])
     # print(f"Rr: {Rr.shape}, Rs: {Rs.shape}")
     Rr = Rr[0].numpy()
     Rs = Rs[0].numpy()
@@ -460,12 +465,21 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
             tool_kp_vis = tool_kp[:, :tool_kp_num]
             
             states = np.concatenate([pred_state, tool_kp[0:1]], axis=1)
+            
+            # action encoded as state_delta (only stored in tool keypoints)
+            states_delta = np.zeros((max_nobj + max_ntool * max_tool, states.shape[-1]), dtype=np.float32)
+            states_delta[max_nobj:] = tool_kp[1] - tool_kp[0]
+
+            pushing_direction = states_delta[max_nobj]  # (3,)
+            pushing_direction = torch.from_numpy(pushing_direction).unsqueeze(0).float().to(device)
+
             assert states.shape[1] == max_nobj + max_ntool * max_tool
             assert states.shape[0] == 1
             Rr, Rs = construct_edges_from_states(torch.tensor(states), adj_thresh, 
                                                 mask=graph['state_mask'], 
                                                 tool_mask=graph['tool_mask'],
-                                                no_self_edge=True)
+                                                no_self_edge=True,
+                                                pushing_direction=pushing_direction)
             Rr = Rr[0].numpy()
             Rs = Rs[0].numpy()
             Rr = pad(Rr, max_nR)
@@ -473,10 +487,6 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
             Rr = torch.from_numpy(Rr).float()
             Rs = torch.from_numpy(Rs).float()
 
-            # action encoded as state_delta (only stored in tool keypoints)
-            states_delta = np.zeros((max_nobj + max_ntool * max_tool, states.shape[-1]), dtype=np.float32)
-            states_delta[max_nobj:] = tool_kp[1] - tool_kp[0]
- 
             state_history = graph['state'][0].detach().cpu().numpy()
             state_history = np.concatenate([state_history[1:], states], axis=0)
 
@@ -708,20 +718,27 @@ def rollout_dataset(model, device, dataset, material_config, save_dir):
         plt.close()
 
 
-def rollout(config, epoch, out_dir_root):
+def rollout(args, config, out_dir_root):
     train_config = config['train_config']
     dataset_config = config['dataset_config']
     model_config = config['model_config']
     material_config = config['material_config']
+    
+    epoch = args.epoch
 
     set_seed(train_config['random_seed'])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    run_name = train_config['out_dir'].split('/')[-1]
-    save_dir = os.path.join(out_dir_root, f"rollout-{run_name}-model_{epoch}")
-    # save_dir = f"/mnt/sda/vis/rollout-{run_name}-model_{epoch}"
-    os.makedirs(save_dir, exist_ok=True)
-    checkpoint_dir = os.path.join(train_config['out_dir'], 'checkpoints', 'model_{}.pth'.format(epoch))
+    if args.debug:
+        run_name = train_config['out_dir'].split('/')[-1]
+        save_dir = os.path.join(out_dir_root, f"rollout-{run_name}-debug")
+        os.makedirs(save_dir, exist_ok=True)
+        checkpoint_dir = os.path.join(train_config['out_dir'], 'checkpoints', 'latest.pth')
+    else:
+        run_name = train_config['out_dir'].split('/')[-1]
+        save_dir = os.path.join(out_dir_root, f"rollout-{run_name}-model_{epoch}")
+        os.makedirs(save_dir, exist_ok=True)
+        checkpoint_dir = os.path.join(train_config['out_dir'], 'checkpoints', 'model_{}.pth'.format(epoch))
 
     model_config['n_his'] = train_config['n_his']
     model = DynamicsPredictor(model_config, material_config, device)
@@ -752,10 +769,11 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument('--config', type=str, default='config/debug.yaml')
     arg_parser.add_argument('--epoch', type=str, default=100)
+    arg_parser.add_argument('--debug', type=bool, default=False)
     args = arg_parser.parse_args()
 
     with open(args.config, 'r') as f:
         config = yaml.load(f, Loader=yaml.CLoader)
 
     out_dir_root = f"/mnt/nvme1n1p1/baoyu/vis"
-    rollout(config, args.epoch, out_dir_root)
+    rollout(args, config, out_dir_root)

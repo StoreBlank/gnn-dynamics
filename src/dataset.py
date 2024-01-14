@@ -9,12 +9,13 @@ from torch.utils.data import Dataset
 from dgl.geometry import farthest_point_sampler
 from utils import pad, pad_torch, fps_rad_idx
 
-def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edge=False):  # helper function for construct_graph
+def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edge=False, pushing_direction=None):  # helper function for construct_graph
     '''
     # :param states: (B, N+2M, state_dim) torch tensor
     # :param adj_thresh: (B, ) torch tensor
     # :param mask: (B, N+2M) torch tensor, true when index is a valid particle
     # :param tool_mask: (B, N+2M) torch tensor, true when index is a valid tool particle
+    # :param pushing_direction: (B, 3) torch tensor, pushing direction for each eef particle
     
     # :return:
     # - Rr: (B, n_rel, N) torch tensor
@@ -34,17 +35,34 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
     # convert threshold to tensor
     threshold = torch.tensor(threshold, device=states.device, dtype=states.dtype)
     
-    dis = torch.sum((s_sender - s_receiv)**2, -1)
-    mask_1 = mask[:, :, None].repeat(1, 1, N)
-    mask_2 = mask[:, None, :].repeat(1, N, 1)
+    s_diff = s_receiv - s_sender # (B, N, N, 3)
+    dis = torch.sum(s_diff ** 2, -1)
+    mask_1 = mask[:, :, None].repeat(1, 1, N)  # particle receiver
+    mask_2 = mask[:, None, :].repeat(1, N, 1)  # particle sender
     mask_12 = mask_1 * mask_2
     dis[~mask_12] = 1e10  # avoid invalid particles to particles relations
     
-    tool_mask_1 = tool_mask[:, :, None].repeat(1, 1, N)
-    tool_mask_2 = tool_mask[:, None, :].repeat(1, N, 1)
+    tool_mask_1 = tool_mask[:, :, None].repeat(1, 1, N)  # tool particle receiver
+    tool_mask_2 = tool_mask[:, None, :].repeat(1, N, 1)  # tool particle sender
     tool_mask_12 = tool_mask_1 * tool_mask_2
     dis[tool_mask_12] = 1e10  # avoid tool to tool relations
     
+    obj_tool_mask_1 = tool_mask_1 * mask_2  # particle sender, tool receiver
+    obj_tool_mask_2 = tool_mask_2 * mask_1  # particle receiver, tool sender
+
+    obj_tool_mask = -1. * obj_tool_mask_1 + 1. * obj_tool_mask_2
+
+    pushing_direction = pushing_direction[:, None, None, :].repeat(1, N, N, 1)  # (B, N, N, 3)
+    pushing_diff = pushing_direction * obj_tool_mask[:, :, :, None]  # (B, N, N, 3)
+    
+    # make pushing_diff and s_diff have the same device
+    pushing_diff = pushing_diff.to(device=states.device, dtype=states.dtype)
+    s_diff = s_diff.to(device=states.device, dtype=states.dtype)
+    
+    pushing_mask = pushing_diff * s_diff  # (B, N, N, 3)
+    pushing_mask = torch.sum(pushing_mask, -1) < 0  # (B, N, N)
+    dis[pushing_mask] = 1e10  # avoid tool to obj relations in reverse pushing direction
+
     adj_matrix = ((dis - threshold[:, None, None]) < 0).to(torch.float32)
     # print(f'adj_matrix shape: {adj_matrix.shape}') # (64, 300, 300)
     # print(adj_matrix)
@@ -263,6 +281,9 @@ class DynDataset(Dataset):
         ## states (object + tool, 3)
         states_delta = np.zeros((max_nobj + max_ntool * max_tool, 3), dtype=np.float32)
         states_delta[max_nobj : max_nobj + tool_kp_num] = tool_kp[1] - tool_kp[0]
+
+        # new: get pushing direction
+        pushing_direction = states_delta[max_nobj]  # (3, )
         
         # load future states
         obj_kp_future = np.zeros((n_future, max_nobj, 3), dtype=np.float32)
@@ -415,6 +436,8 @@ class DynDataset(Dataset):
             "state_mask": state_mask, # (N+2M, )
             "tool_mask": tool_mask, # (N+2M, )
             "obj_mask": obj_mask, # (N, )
+
+            "pushing_direction": pushing_direction, # (3, )
         }
 
         for material_name, material_dim in self.materials.items():
