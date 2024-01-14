@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 import torch
 import PIL.Image as Image
+import moviepy.editor as mpy
 
 def fps_rad_idx(pcd, radius):
     # pcd: (n, 3) numpy array
@@ -97,7 +98,7 @@ def vis_points(points, intr, extr, img, point_size=3, point_color=(0, 0, 255)):
     
     return point_proj, img
 
-def merge_video(image_path, image_type, out_path, fps):
+def opencv_merge_video(image_path, image_type, out_path, fps=20):
     f_names = os.listdir(image_path)
     image_names = []
     for f_name in f_names:
@@ -107,7 +108,6 @@ def merge_video(image_path, image_type, out_path, fps):
     image_names.sort(key=lambda x: int(x.split('_')[0]))
 
     fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
-    # fourcc = cv2.VideoWriter_fourcc(*'XVID')
     
     img = Image.open(os.path.join(image_path, image_names[0]))
 
@@ -120,3 +120,20 @@ def merge_video(image_path, image_type, out_path, fps):
     # print("Video merged!")
 
     video_writer.release()
+
+def moviepy_merge_video(image_path, image_type, out_path, fps=20):
+    # load images
+    # f_names = os.listdir(image_path)
+    # image_names = []
+    # for f_name in f_names:
+    #     if f'_{image_type}.jpg' in f_name:
+    #         image_names.append(f_name)
+    # image_names.sort(key=lambda x: int(x.split('_')[0]))
+    
+    # load images
+    image_files = sorted([os.path.join(image_path, img) for img in os.listdir(image_path) if img.endswith(f'{image_type}.jpg')])
+    
+    # create a video clip from the images
+    clip = mpy.ImageSequenceClip(image_files, fps=fps)
+    # write the video clip to a file
+    clip.write_videofile(out_path, fps=fps)

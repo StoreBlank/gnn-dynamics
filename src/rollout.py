@@ -20,7 +20,7 @@ import glob
 from dgl.geometry import farthest_point_sampler
 
 from dataset import construct_edges_from_states, load_dataset
-from utils import rgb_colormap, fps_rad_idx, pad, vis_points, merge_video
+from utils import rgb_colormap, fps_rad_idx, pad, vis_points, moviepy_merge_video
 from train import truncate_graph
 
 
@@ -552,13 +552,13 @@ def rollout_episode(model, device, dataset, material_config, pairs, episode_idx,
     # vis
     for cam in range(4):
         img_path = os.path.join(save_dir, f"camera_{cam}")
-        fps = 20
+        fps = 10
         pred_out_path = os.path.join(img_path, "pred.mp4")
-        merge_video(img_path, 'pred', pred_out_path, fps)
+        moviepy_merge_video(img_path, 'pred', pred_out_path, fps)
         gt_out_path = os.path.join(img_path, "gt.mp4")
-        merge_video(img_path, 'gt', gt_out_path, fps)
+        moviepy_merge_video(img_path, 'gt', gt_out_path, fps)
         both_out_path = os.path.join(img_path, "both.mp4")
-        merge_video(img_path, 'both', both_out_path, fps)
+        moviepy_merge_video(img_path, 'both', both_out_path, fps)
 
     return error_list
 
@@ -604,19 +604,30 @@ def rollout_episode_pushes(model, device, dataset, material_config, pairs, episo
         error_list = np.array(error_list)
         np.savetxt(os.path.join(save_dir, f'error_{i}.txt'), error_list)
 
+    # # vis
+    # for cam in range(4):
+    #     img_path = os.path.join(save_dir, f"camera_{cam}")
+    #     frame_rate = 4
+    #     height = 360
+    #     width = 640
+    #     pred_out_path = os.path.join(img_path, "pred.mp4")
+    #     os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_pred.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {pred_out_path} -y")
+    #     gt_out_path = os.path.join(img_path, "gt.mp4")
+    #     os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_gt.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {gt_out_path} -y")
+    #     both_out_path = os.path.join(img_path, "both.mp4")
+    #     os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_both.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {both_out_path} -y")
+
     # vis
     for cam in range(4):
         img_path = os.path.join(save_dir, f"camera_{cam}")
-        frame_rate = 4
-        height = 360
-        width = 640
+        fps = 10
         pred_out_path = os.path.join(img_path, "pred.mp4")
-        os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_pred.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {pred_out_path} -y")
+        moviepy_merge_video(img_path, 'pred', pred_out_path, fps)
         gt_out_path = os.path.join(img_path, "gt.mp4")
-        os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_gt.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {gt_out_path} -y")
+        moviepy_merge_video(img_path, 'gt', gt_out_path, fps)
         both_out_path = os.path.join(img_path, "both.mp4")
-        os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_both.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {both_out_path} -y")
-
+        moviepy_merge_video(img_path, 'both', both_out_path, fps)
+        
     return error_list_pushes
 
 
