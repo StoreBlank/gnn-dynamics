@@ -204,7 +204,7 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
     fps_idx_list = []
     # can_pos = np.load(canonical_pos[episode_idx])  # (N,)
     # print(f"obj_kp_start: {obj_kp_start.shape}")
-    print(f"obj_kp_start: min {obj_kp_start[0].min(0)}, max {obj_kp_start[0].max(0)}")
+    # print(f"obj_kp_start: min {obj_kp_start[0].min(0)}, max {obj_kp_start[0].max(0)}")
     for j in range(len(obj_kp_start)):
         # farthest point sampling
         particle_tensor = torch.from_numpy(obj_kp_start[j]).float()[None, ...]
@@ -215,7 +215,7 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
         downsample_particle = particle_tensor[0, fps_idx_1, :].numpy()
         _, fps_idx_2 = fps_rad_idx(downsample_particle, fps_radius)
         fps_idx_2 = fps_idx_2.astype(int)
-        print(f"fps_idx_2: {fps_idx_2.shape}")
+        # print(f"fps_idx_2: {fps_idx_2.shape}")
         fps_idx = fps_idx_1[fps_idx_2]
         fps_idx_list.append(fps_idx)
 
@@ -380,6 +380,11 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
     obj_mask = graph['obj_mask'].numpy()
     obj_kp_num = obj_mask.sum()
     print(f"obj_kp_num: {obj_kp_num}")
+    
+    tool_mask = graph['tool_mask'].numpy()
+    tool_kp_num = tool_mask.sum() 
+    print(f"tool_kp_num: {tool_kp_num}")
+    
     max_nobj = dataset['max_nobj']
     max_ntool = dataset['max_ntool']
 
@@ -387,7 +392,7 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
     if vis:
         Rr = graph['Rr'].numpy()
         Rs = graph['Rs'].numpy()
-        tool_kp = graph['tool_kp'].numpy()
+        tool_kp = graph['tool_kp'].numpy() # (2, tool_kp_num, 3)
         kp_vis = graph['state'][-1, :obj_kp_num].numpy()
         pred_kp_proj_last, gt_kp_proj_last, gt_lineset, pred_lineset = \
             visualize_graph(dataset['data_dir'], episode_idx, current_start, current_end, 0, save_dir,
@@ -447,11 +452,13 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
             tool_kp_start = all_tool_states[episode_idx][current_start] # (num_tool_points, 3)
             tool_kp_end = all_tool_states[episode_idx][current_end] # (num_tool_points, 3)
 
-            tool_kp_num = tool_kp_start.shape[0]
+            # tool_kp_num = tool_kp_start.shape[0]
 
             tool_kp = np.stack([tool_kp_start, tool_kp_end], axis=0)  # (2, N, 3)
             tool_kp = pad(tool_kp, max_ntool * max_tool, dim=1)
-
+            
+            tool_kp_vis = tool_kp[:, :tool_kp_num]
+            
             states = np.concatenate([pred_state, tool_kp[0:1]], axis=1)
             assert states.shape[1] == max_nobj + max_ntool * max_tool
             assert states.shape[0] == 1
@@ -468,7 +475,7 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
 
             # action encoded as state_delta (only stored in tool keypoints)
             states_delta = np.zeros((max_nobj + max_ntool * max_tool, states.shape[-1]), dtype=np.float32)
-            states_delta[max_nobj : max_nobj + tool_kp_num] = tool_kp[1] - tool_kp[0]
+            states_delta[max_nobj:] = tool_kp[1] - tool_kp[0]
  
             state_history = graph['state'][0].detach().cpu().numpy()
             state_history = np.concatenate([state_history[1:], states], axis=0)
@@ -499,7 +506,7 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
             if vis:
                 pred_kp_proj_last, gt_kp_proj_last, gt_lineset, pred_lineset = \
                     visualize_graph(dataset['data_dir'], episode_idx, current_start, current_end, i, save_dir,
-                    obj_kp_vis, gt_kp_vis, tool_kp, Rr, Rs, max_nobj,
+                    obj_kp_vis, gt_kp_vis, tool_kp_vis, Rr, Rs, max_nobj,
                     gt_lineset=gt_lineset, pred_lineset=pred_lineset,
                     pred_kp_proj_last=pred_kp_proj_last, gt_kp_proj_last=gt_kp_proj_last)
 
