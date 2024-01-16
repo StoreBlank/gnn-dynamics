@@ -21,6 +21,8 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
     # - Rr: (B, n_rel, N) torch tensor
     # - Rs: (B, n_rel, N) torch tensor
     '''
+    no_self_edge = False
+
     B, N, state_dim = states.shape
     # print(f'states shape: {states.shape}') # (64, 300, 3)
     s_receiv = states[:, :, None, :].repeat(1, 1, N, 1)
@@ -47,21 +49,21 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
     tool_mask_12 = tool_mask_1 * tool_mask_2
     dis[tool_mask_12] = 1e10  # avoid tool to tool relations
     
-    obj_tool_mask_1 = tool_mask_1 * mask_2  # particle sender, tool receiver
-    obj_tool_mask_2 = tool_mask_2 * mask_1  # particle receiver, tool sender
+    # obj_tool_mask_1 = tool_mask_1 * mask_2  # particle sender, tool receiver
+    # obj_tool_mask_2 = tool_mask_2 * mask_1  # particle receiver, tool sender
 
-    obj_tool_mask = -1. * obj_tool_mask_1 + 1. * obj_tool_mask_2
+    # obj_tool_mask = -1. * obj_tool_mask_1 + 1. * obj_tool_mask_2
 
-    pushing_direction = pushing_direction[:, None, None, :].repeat(1, N, N, 1)  # (B, N, N, 3)
-    pushing_diff = pushing_direction * obj_tool_mask[:, :, :, None]  # (B, N, N, 3)
+    # pushing_direction = pushing_direction[:, None, None, :].repeat(1, N, N, 1)  # (B, N, N, 3)
+    # pushing_diff = pushing_direction * obj_tool_mask[:, :, :, None]  # (B, N, N, 3)
     
-    # make pushing_diff and s_diff have the same device
-    pushing_diff = pushing_diff.to(device=states.device, dtype=states.dtype)
-    s_diff = s_diff.to(device=states.device, dtype=states.dtype)
-    
-    pushing_mask = pushing_diff * s_diff  # (B, N, N, 3)
-    pushing_mask = torch.sum(pushing_mask, -1) < 0  # (B, N, N)
-    dis[pushing_mask] = 1e10  # avoid tool to obj relations in reverse pushing direction
+    # # make pushing_diff and s_diff have the same device
+    # pushing_diff = pushing_diff.to(device=states.device, dtype=states.dtype)
+    # s_diff = s_diff.to(device=states.device, dtype=states.dtype)
+
+    # pushing_mask = pushing_diff * s_diff  # (B, N, N, 3)
+    # pushing_mask = torch.sum(pushing_mask, -1) < 0  # (B, N, N)
+    # dis[pushing_mask] = 1e10  # avoid tool to obj relations in reverse pushing direction
 
     adj_matrix = ((dis - threshold[:, None, None]) < 0).to(torch.float32)
     # print(f'adj_matrix shape: {adj_matrix.shape}') # (64, 300, 300)
@@ -150,6 +152,7 @@ def load_dataset(dataset, material_config, phase='train'):
                     used_params.append((properties[item['name']] - range_min) / (range_max - range_min + 1e-6))
             
             used_params = np.array(used_params).astype(np.float32)
+            used_params = used_params * 2. - 1. #TODO: normalize to [-1, 1]
             physics_params_episode[material_name] = used_params
         physics_params.append(physics_params_episode)
 

@@ -551,20 +551,6 @@ def rollout_episode(model, device, dataset, material_config, pairs, episode_idx,
 
     error_list = np.array(error_list)
     np.savetxt(os.path.join(save_dir, f'error.txt'), error_list)
-
-    # vis
-    # for cam in range(4):
-    #     img_path = os.path.join(save_dir, f"camera_{cam}")
-    #     frame_rate = 4
-    #     height = 360
-    #     width = 640
-    #     pred_out_path = os.path.join(img_path, "pred.mp4")
-    #     # ffmpeg -loglevel panic -r 4 -f image2 -s 640x360 -pattern_type glob -i '/mnt/nvme1n1p1/baoyu/vis/rollout-rope-model_100/rope/900/long/camera_0/*_pred.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p /mnt/nvme1n1p1/baoyu/vis/rollout-rope-model_100/rope/900/long/camera_0/pred.mp4 -y
-    #     os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_pred.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {pred_out_path} -y")
-    #     gt_out_path = os.path.join(img_path, "gt.mp4")
-    #     os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_gt.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {gt_out_path} -y")
-    #     both_out_path = os.path.join(img_path, "both.mp4")
-    #     os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_both.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {both_out_path} -y")
     
     # vis
     for cam in range(4):
@@ -620,19 +606,6 @@ def rollout_episode_pushes(model, device, dataset, material_config, pairs, episo
 
         error_list = np.array(error_list)
         np.savetxt(os.path.join(save_dir, f'error_{i}.txt'), error_list)
-
-    # # vis
-    # for cam in range(4):
-    #     img_path = os.path.join(save_dir, f"camera_{cam}")
-    #     frame_rate = 4
-    #     height = 360
-    #     width = 640
-    #     pred_out_path = os.path.join(img_path, "pred.mp4")
-    #     os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_pred.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {pred_out_path} -y")
-    #     gt_out_path = os.path.join(img_path, "gt.mp4")
-    #     os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_gt.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {gt_out_path} -y")
-    #     both_out_path = os.path.join(img_path, "both.mp4")
-    #     os.system(f"ffmpeg -loglevel panic -r {frame_rate} -f image2 -s {width}x{height} -pattern_type glob -i '{img_path}/*_both.jpg' -vcodec libx264 -crf 25 -pix_fmt yuv420p {both_out_path} -y")
 
     # vis
     for cam in range(4):

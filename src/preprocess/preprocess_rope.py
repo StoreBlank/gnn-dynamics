@@ -204,7 +204,7 @@ def extract_eef_points(data_dir):
         np.save(os.path.join(data_dir, f"episode_{epi_idx}/processed_eef_states.npy"), processed_eef_states)
         
 if __name__ == "__main__":
-    data_name = "rope"
+    data_name = "rope_stiff"
     data_dir_list = [
         f"/mnt/nvme1n1p1/baoyu/data/{data_name}"
         # f"/mnt/sda/data/{data_name}"

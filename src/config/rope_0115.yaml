@@ -1,11 +1,11 @@
 train_config:
-  # out_dir: "/mnt/sda/logs/rope_2"
-  out_dir: "/mnt/nvme1n1p1/baoyu/logs/rope_no_phys"
+  # out_dir: "/mnt/sda/logs/rope"
+  out_dir: "/mnt/nvme1n1p1/baoyu/logs/rope_0115"
   phases: ["train", "valid"]
   load_model: False
   model_checkpoint: "/mnt/sda/logs/rope/checkpoints/latest.pth"
   optimizer_checkpoint: "/mnt/sda/logs/rope/checkpoints/latest_optim.pth"
-  device: "cuda:1"
+  device: "cuda"
   
   batch_size: 128
   n_epochs: 100
@@ -100,10 +100,10 @@ material_config:
         min: 2.5
         max: 4.0
       - name: "dynamic_friction"
-        use: False
+        use: True
         min: 0.1
         max: 0.45
       - name: "cluster_spacing"
-        use: False
+        use: True
         min: 2.0
         max: 8.0
