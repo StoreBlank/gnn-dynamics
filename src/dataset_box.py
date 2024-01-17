@@ -10,98 +10,29 @@ from dgl.geometry import farthest_point_sampler
 from utils import pad, pad_torch, fps_rad_idx
 
 def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edge=False, pushing_direction=None):  # helper function for construct_graph
-    '''
-    # :param states: (B, N+2M, state_dim) torch tensor
-    # :param adj_thresh: (B, ) torch tensor
-    # :param mask: (B, N+2M) torch tensor, true when index is a valid particle
-    # :param tool_mask: (B, N+2M) torch tensor, true when index is a valid tool particle
-    # :param pushing_direction: (B, 3) torch tensor, pushing direction for each eef particle
     
-    # :return:
-    # - Rr: (B, n_rel, N) torch tensor
-    # - Rs: (B, n_rel, N) torch tensor
-    '''
     no_self_edge = False
-
-    B, N, state_dim = states.shape
-    # print(f'states shape: {states.shape}') # (64, 300, 3)
+    
+    B, N, state_dim = states.shape # (batch_size, obj_points+eef_points, 3)
     s_receiv = states[:, :, None, :].repeat(1, 1, N, 1)
     s_sender = states[:, None, :, :].repeat(1, N, 1, 1)
-    # print(f's_receiv shape: {s_receiv.shape}; s_sender shape: {s_sender.shape}') # (64, 300, 300, 3)
-
-    # dis: B x particle_num x particle_num
-    # adj_matrix: B x particle_num x particle_num
-    if isinstance(adj_thresh, float):
-        adj_thresh = torch.tensor(adj_thresh, device=states.device, dtype=states.dtype).repeat(B)
-    threshold = adj_thresh * adj_thresh
-    # convert threshold to tensor
-    threshold = torch.tensor(threshold, device=states.device, dtype=states.dtype)
     
-    s_diff = s_receiv - s_sender # (B, N, N, 3)
-    dis = torch.sum(s_diff ** 2, -1)
-    mask_1 = mask[:, :, None].repeat(1, 1, N)  # particle receiver
-    mask_2 = mask[:, None, :].repeat(1, N, 1)  # particle sender
+    # no threshold: fully connected graph
+    s_diff = s_receiv - s_sender # (batch_size, N, N, 3)
+    dis = torch.sum(s_diff ** 2, dim=-1) # (batch_size, N, N)
+    mask_1 = mask[:, :, None].repeat(1, 1, N) # particle receiver
+    mask_2 = mask[:, None, :].repeat(1, N, 1) # particle sender
     mask_12 = mask_1 * mask_2
-    dis[~mask_12] = 1e10  # avoid invalid particles to particles relations
+    dis[~mask_12] = 1e10 # avoid invalid particles to particles relations
     
-    tool_mask_1 = tool_mask[:, :, None].repeat(1, 1, N)  # tool particle receiver
-    tool_mask_2 = tool_mask[:, None, :].repeat(1, N, 1)  # tool particle sender
+    tool_mask_1 = tool_mask[:, :, None].repeat(1, 1, N) # tool particle receiver
+    tool_mask_2 = tool_mask[:, None, :].repeat(1, N, 1) # tool particle sender
     tool_mask_12 = tool_mask_1 * tool_mask_2
-    dis[tool_mask_12] = 1e10  # avoid tool to tool relations
+    dis[tool_mask_12] = 1e10 # avoid tool to tool relations
     
-    # obj_tool_mask_1 = tool_mask_1 * mask_2  # particle sender, tool receiver
-    # obj_tool_mask_2 = tool_mask_2 * mask_1  # particle receiver, tool sender
-
-    # obj_tool_mask = -1. * obj_tool_mask_1 + 1. * obj_tool_mask_2
-
-    # pushing_direction = pushing_direction[:, None, None, :].repeat(1, N, N, 1)  # (B, N, N, 3)
-    # pushing_diff = pushing_direction * obj_tool_mask[:, :, :, None]  # (B, N, N, 3)
     
-    # # make pushing_diff and s_diff have the same device
-    # pushing_diff = pushing_diff.to(device=states.device, dtype=states.dtype)
-    # s_diff = s_diff.to(device=states.device, dtype=states.dtype)
-
-    # pushing_mask = pushing_diff * s_diff  # (B, N, N, 3)
-    # pushing_mask = torch.sum(pushing_mask, -1) < 0  # (B, N, N)
-    # dis[pushing_mask] = 1e10  # avoid tool to obj relations in reverse pushing direction
-
-    adj_matrix = ((dis - threshold[:, None, None]) < 0).to(torch.float32)
-    # print(f'adj_matrix shape: {adj_matrix.shape}') # (64, 300, 300)
-    # print(adj_matrix)
-    # adj_matrix = adj_matrix.to(device=states.device, dtype=states.dtype)
-
-    # remove self edge
-    if no_self_edge:
-        self_edge_mask = torch.eye(N, device=states.device, dtype=states.dtype)[None, :, :]
-        adj_matrix = adj_matrix * (1 - self_edge_mask)
-
-    # add topk constraints
-    topk = 20 #TODO: hyperparameter
-    topk_idx = torch.topk(dis, k=topk, dim=-1, largest=False)[1]
-    topk_matrix = torch.zeros_like(adj_matrix)
-    topk_matrix.scatter_(-1, topk_idx, 1)
-    adj_matrix = adj_matrix * topk_matrix
-    # print(f'adj_matrix shape: {adj_matrix.shape}') # (64, 300, 300)
     
-    n_rels = adj_matrix.sum(dim=(1,2))
-    # print(f'n_rels: {n_rels}') # (64)
-    # print(n_rels.shape, (mask * 1.0).sum(-1).mean().item(), n_rels.mean().item())
-    n_rel = n_rels.max().long().item()
-    # print(f'n_rel: {n_rel}') # 410
-    
-    rels_idx = []
-    rels_idx = [torch.arange(n_rels[i]) for i in range(B)]
-    rels_idx = torch.hstack(rels_idx).to(device=states.device, dtype=torch.long)
-    rels = adj_matrix.nonzero()
-    
-    Rr = torch.zeros((B, n_rel, N), device=states.device, dtype=states.dtype)
-    Rs = torch.zeros((B, n_rel, N), device=states.device, dtype=states.dtype)
-    Rr[rels[:, 0], rels_idx, rels[:, 1]] = 1
-    Rs[rels[:, 0], rels_idx, rels[:, 2]] = 1
-    # print(f'Rr shape: {Rr.shape}; Rs shape: {Rs.shape}') # (64, 410, 300); (64, 410, 300)
-    # print(Rr, Rs)
-    
-    return Rr, Rs
+    return 
 
 def load_pairs(pairs_path, episode_range):
     pair_lists = []
@@ -152,7 +83,7 @@ def load_dataset(dataset, material_config, phase='train'):
                     used_params.append((properties[item['name']] - range_min) / (range_max - range_min + 1e-6))
             
             used_params = np.array(used_params).astype(np.float32)
-            # used_params = used_params * 2. - 1. #TODO: normalize to [-1, 1]
+            used_params = used_params * 2. - 1. #TODO: normalize to [-1, 1]
             physics_params_episode[material_name] = used_params
         physics_params.append(physics_params_episode)
 
