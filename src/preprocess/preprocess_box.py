@@ -8,6 +8,21 @@ import torch
 from dgl.geometry import farthest_point_sampler
 from utils import quaternion_to_rotation_matrix, fps_rad_idx, pad
 
+def extract_physics_params(data_dir):
+    num_episodes = len(list(glob.glob(os.path.join(data_dir, f"episode_*"))))
+    print(f"Preprocessing box points starts. Number of episodes: {num_episodes}")
+
+    for epi_idx in range(num_episodes):
+        box_com = np.load(os.path.join(data_dir, f"episode_{epi_idx:03d}/box_com.npy")) # box_size, box_com
+        com = box_com[1]
+        property_params = {
+            'com_x': com[0],
+            'com_y': com[1],
+        }
+        print(f"Processing episode {epi_idx:03d}, physics_params: {property_params}")
+        with open(os.path.join(data_dir, f"episode_{epi_idx:03d}/property_params.json"), 'w') as f:
+            json.dump(property_params, f)
+
 def extract_box_points(data_dir):
     num_episodes = len(list(glob.glob(os.path.join(data_dir, f"episode_*"))))
     print(f"Preprocessing box points starts. Number of episodes: {num_episodes}")
@@ -159,12 +174,15 @@ if __name__ == "__main__":
     for data_dir, save_dir in zip(data_dir_list, save_dir_list):
         if os.path.isdir(data_dir):
             os.makedirs(save_dir, exist_ok=True)
-            print("================extract_pushes================")
-            extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
-            print("==============================================")
-            print("================extract_box_points================")
-            extract_box_points(data_dir)
-            print("==================================================")
+            # print("================extract_pushes================")
+            # extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
+            # print("==============================================")
+            # print("================extract_box_points================")
+            # extract_box_points(data_dir)
+            # print("==================================================")
+            print("================extract_physics_params================")
+            extract_physics_params(data_dir)
+            print("======================================================")
         os.makedirs(save_dir, exist_ok=True)
         with open(os.path.join(save_dir, 'metadata.txt'), 'w') as f:
             f.write(f'{dist_thresh},{n_future},{n_his}')

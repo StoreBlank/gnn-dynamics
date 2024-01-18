@@ -39,7 +39,7 @@ model_config:
   rel_particle_dim: 0
   rel_attr_dim: 2
   rel_group_dim: 1  # sum of difference of group one-hot vector
-  rel_distance_dim: 3
+  rel_distance_dim: 2
   rel_density_dim: 0
 
   # canonical
@@ -58,10 +58,10 @@ dataset_config:
       materials: ["rigid"]
       data_dir: "/mnt/nvme1n1p1/baoyu/data/box"
       prep_data_dir: "/mnt/nvme1n1p1/baoyu/preprocess_010/box"
-      fps_radius_range: [0.18, 0.22] #TODO
-      adj_radius_range: [0.28, 0.32] #TODO
+      fps_radius_range: [0,0] #TODO: not used
+      adj_radius_range: [0,0] #TODO: not used
       state_noise: 
-        train: 4 #4mm
+        train: 0 #TODO: 4 4mm
         valid: 0.0
       phys_noise: 
         train: 0.0

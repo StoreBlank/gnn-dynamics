@@ -65,9 +65,9 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
     # pushing_mask = torch.sum(pushing_mask, -1) < 0  # (B, N, N)
     # dis[pushing_mask] = 1e10  # avoid tool to obj relations in reverse pushing direction
 
-    adj_matrix = ((dis - threshold[:, None, None]) < 0).to(torch.float32)
+    adj_matrix = ((dis - threshold[:, None, None]) < 0).to(torch.float32) # (B, N, N)
     # print(f'adj_matrix shape: {adj_matrix.shape}') # (64, 300, 300)
-    # print(adj_matrix)
+    # print(adj_matrix) # 0 or 1
     # adj_matrix = adj_matrix.to(device=states.device, dtype=states.dtype)
 
     # remove self edge

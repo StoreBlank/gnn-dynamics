@@ -13,12 +13,12 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
     
     no_self_edge = False
     
-    B, N, state_dim = states.shape # (batch_size, obj_points+eef_points, 3)
+    B, N, state_dim = states.shape # (batch_size, obj_points+eef_points, 2)
     s_receiv = states[:, :, None, :].repeat(1, 1, N, 1)
     s_sender = states[:, None, :, :].repeat(1, N, 1, 1)
     
     # no threshold: fully connected graph
-    s_diff = s_receiv - s_sender # (batch_size, N, N, 3)
+    s_diff = s_receiv - s_sender # (batch_size, N, N, 2)
     dis = torch.sum(s_diff ** 2, dim=-1) # (batch_size, N, N)
     mask_1 = mask[:, :, None].repeat(1, 1, N) # particle receiver
     mask_2 = mask[:, None, :].repeat(1, N, 1) # particle sender
@@ -29,17 +29,37 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
     tool_mask_2 = tool_mask[:, None, :].repeat(1, N, 1) # tool particle sender
     tool_mask_12 = tool_mask_1 * tool_mask_2
     dis[tool_mask_12] = 1e10 # avoid tool to tool relations
+
+    # fully connected graph
+    adj_matrix = torch.ones((B, N, N), dtype=torch.float32, device=states.device)
     
+    # remove self edge
+    if no_self_edge:
+        self_edge_mask = torch.eye(N, device=states.device, dtype=states.dtype)[None, :, :]
+        adj_matrix = adj_matrix * (1 - self_edge_mask)
     
-    
-    return 
+    n_rels = adj_matrix.sum(dim=(1,2))
+    n_rel = n_rels.max().long().item()
+    # print(f"n_rel: {n_rel}") #25
+
+    rels_idx = []
+    rels_idx = [torch.arange(n_rels[i]) for i in range(B)]
+    rels_idx = torch.hstack(rels_idx).to(device=states.device, dtype=torch.long)
+    rels = adj_matrix.nonzero()
+
+    Rr = torch.zeros((B, n_rel, N), device=states.device, dtype=states.dtype)
+    Rs = torch.zeros((B, n_rel, N), device=states.device, dtype=states.dtype)
+    Rr[rels[:, 0], rels_idx, rels[:, 1]] = 1
+    Rs[rels[:, 0], rels_idx, rels[:, 2]] = 1
+
+    return Rr, Rs
 
 def load_pairs(pairs_path, episode_range):
     pair_lists = []
     for episode_idx in episode_range:
-        n_pushes = len(list(glob.glob(os.path.join(pairs_path, f'{episode_idx}_*.txt'))))
+        n_pushes = len(list(glob.glob(os.path.join(pairs_path, f'{episode_idx:03d}_*.txt'))))
         for push_idx in range(n_pushes):
-            frame_pairs = np.loadtxt(os.path.join(pairs_path, f'{episode_idx}_{push_idx}.txt'))
+            frame_pairs = np.loadtxt(os.path.join(pairs_path, f'{episode_idx:03d}_{push_idx}.txt'))
             if len(frame_pairs.shape) == 1: continue
             episodes = np.ones((frame_pairs.shape[0], 1)) * episode_idx
             pairs = np.concatenate([episodes, frame_pairs], axis=1)
@@ -66,7 +86,7 @@ def load_dataset(dataset, material_config, phase='train'):
 
     physics_params = []
     for episode_idx in range(num_episodes):
-        physics_path = os.path.join(data_dir, f"episode_{episode_idx}/property_params.json")
+        physics_path = os.path.join(data_dir, f"episode_{episode_idx:03d}/property_params.json")
         with open(physics_path) as f:
             properties = json.load(f)
         
@@ -83,7 +103,7 @@ def load_dataset(dataset, material_config, phase='train'):
                     used_params.append((properties[item['name']] - range_min) / (range_max - range_min + 1e-6))
             
             used_params = np.array(used_params).astype(np.float32)
-            used_params = used_params * 2. - 1. #TODO: normalize to [-1, 1]
+            # used_params = used_params * 2. - 1. #TODO: normalize to [-1, 1]
             physics_params_episode[material_name] = used_params
         physics_params.append(physics_params_episode)
 
@@ -130,9 +150,11 @@ class DynDataset(Dataset):
         self.all_particle_pos = []
         self.all_tool_states = []
         for episode_idx in range(num_episodes):
-            particles_pos = np.load(os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy"))
-            tool_states = np.load(os.path.join(data_dir, f"episode_{episode_idx}/processed_eef_states.npy"))
-            # print(f'episode {episode_idx}: tool_states shape: {tool_states.shape}.')
+            particles_pos = np.load(os.path.join(data_dir, f"episode_{episode_idx:03d}/processed_box_pos.npy"))
+            num_frames = particles_pos.shape[0]
+            tool_states = np.load(os.path.join(data_dir, f"episode_{episode_idx:03d}/eef_states.npy")).reshape((num_frames, 1, 2))
+            # print(f'episode {episode_idx:03d}: particle: {particles_pos.shape}, tool:{tool_states.shape}')
+            # particles: (50, 4, 2), tool: (50, 2)
             self.all_particle_pos.append(particles_pos) 
             self.all_tool_states.append(tool_states)
         
@@ -156,8 +178,8 @@ class DynDataset(Dataset):
         max_nobj = dataset_config['max_nobj']
         max_ntool = dataset_config['max_ntool']
         max_nR = dataset_config['max_nR']
-        fps_radius_range = dataset_config['fps_radius_range']
-        adj_radius_range = dataset_config['adj_radius_range']
+        fps_radius_range = dataset_config['fps_radius_range'] 
+        adj_radius_range = dataset_config['adj_radius_range'] 
         state_noise = dataset_config['state_noise'][self.phase]
         phys_noise = dataset_config['phys_noise'][self.phase]
         
@@ -165,19 +187,13 @@ class DynDataset(Dataset):
         obj_kps, tool_kps = [], []
         for i in range(len(pair)):
             frame_idx = pair[i]
-            # obj_kp: (1, num_obj_points, 3)
-            # tool_kp: (num_tool_points, 3)
-            # obj_ptcls = self.all_particle_pos[episode_idx]
-            # obj_kp, tool_kp = extract_kp_single_frame(dataset_config['data_dir'], episode_idx, frame_idx)
-            # print(obj_kp.shape, tool_kp.shape) 
-            
-            obj_kp = self.all_particle_pos[episode_idx][frame_idx][None] # (1, num_obj_points, 3)
-            tool_kp = self.all_tool_states[episode_idx][frame_idx] # (num_tool_points, 3)
-            
+            obj_kp = self.all_particle_pos[episode_idx][frame_idx][None] # (1, num_obj_points, 2)
+            tool_kp = self.all_tool_states[episode_idx][frame_idx] # (num_tool_points, 2)
             # print(obj_kp.shape, tool_kp.shape)
             
             obj_kps.append(obj_kp)
-            tool_kps.append(tool_kp) # (7, num_tool_points, 3)
+            tool_kps.append(tool_kp) # (7, num_tool_points, 2)
+        # print('tool_kps', np.array(tool_kps).shape)
         
         obj_kp_start = obj_kps[n_his - 1]
         instance_num = len(obj_kp_start)
@@ -194,33 +210,35 @@ class DynDataset(Dataset):
             fps_idx_1 = fps_idx_tensor.numpy().astype(np.int32)
             
             # downsample to uniform radius
-            downsample_particle = particle_tensor[0, fps_idx_1, :].numpy()
-            fps_radius = np.random.uniform(fps_radius_range[0], fps_radius_range[1])
-            _, fps_idx_2 = fps_rad_idx(downsample_particle, fps_radius)
-            fps_idx_2 = fps_idx_2.astype(np.int32)
-            fps_idx = fps_idx_1[fps_idx_2]
+            # downsample_particle = particle_tensor[0, fps_idx_1, :].numpy()
+            # fps_radius = np.random.uniform(fps_radius_range[0], fps_radius_range[1])
+            # _, fps_idx_2 = fps_rad_idx(downsample_particle, fps_radius)
+            # fps_idx_2 = fps_idx_2.astype(np.int32)
+            # # print(f"fps_idx_2: {fps_idx_2.shape}")
+            # fps_idx = fps_idx_1[fps_idx_2]
+            fps_idx = fps_idx_1
             fps_idx_list.append(fps_idx)
         
         # downsample to get current obj kp
         obj_kp_start = [obj_kp_start[j][fps_idx] for j, fps_idx in enumerate(fps_idx_list)]
-        obj_kp_start = np.concatenate(obj_kp_start, axis=0) # (N, 3)
+        obj_kp_start = np.concatenate(obj_kp_start, axis=0) # (N, 2)
         obj_kp_num = obj_kp_start.shape[0]
         
         # get current state delta 
-        # tool_kp: (2, num_tool_points, 3)
+        # tool_kp: (2, num_tool_points, 2)
         tool_kp = np.stack(tool_kps[n_his-1:n_his+1], axis=0)
         tool_kp_num = tool_kp.shape[1]
         # print(tool_kp.shape)
             
-        ## states (object + tool, 3)
-        states_delta = np.zeros((max_nobj + max_ntool * max_tool, 3), dtype=np.float32)
+        ## states (object + tool, 2)
+        states_delta = np.zeros((max_nobj + max_ntool * max_tool, 2), dtype=np.float32)
         states_delta[max_nobj : max_nobj + tool_kp_num] = tool_kp[1] - tool_kp[0]
 
         # new: get pushing direction
-        pushing_direction = states_delta[max_nobj]  # (3, )
+        pushing_direction = states_delta[max_nobj]  # (2, )
         
         # load future states
-        obj_kp_future = np.zeros((n_future, max_nobj, 3), dtype=np.float32)
+        obj_kp_future = np.zeros((n_future, max_nobj, 2), dtype=np.float32)
         # obj_future_mask = np.ones(n_future).astype(bool) # (n_future, )
         for fi in range(n_future):
             obj_kp_fu = obj_kps[n_his + fi]
@@ -230,17 +248,17 @@ class DynDataset(Dataset):
             obj_kp_future[fi] = obj_kp_fu
         
         # load future tool keypoints
-        tool_future = np.zeros((n_future - 1, max_nobj + max_ntool * max_tool, 3), dtype=np.float32)
-        states_delta_future = np.zeros((n_future - 1, max_nobj + max_ntool * max_tool, 3), dtype=np.float32)
+        tool_future = np.zeros((n_future - 1, max_nobj + max_ntool * max_tool, 2), dtype=np.float32)
+        states_delta_future = np.zeros((n_future - 1, max_nobj + max_ntool * max_tool, 2), dtype=np.float32)
         for fi in range(n_future - 1):
             # dynamic tool
             tool_kp_future = tool_kps[n_his+fi:n_his+fi+2]
-            tool_kp_future = np.stack(tool_kp_future, axis=0) # (2, max_ntool, 3)
+            tool_kp_future = np.stack(tool_kp_future, axis=0) # (2, max_ntool, 2)
             tool_future[fi, max_nobj : max_nobj + tool_kp_num] = tool_kp_future[0]
             states_delta_future[fi, max_nobj : max_nobj + tool_kp_num] = tool_kp_future[1] - tool_kp_future[0]
         
         # load history states
-        state_history = np.zeros((n_his, max_nobj + max_ntool * max_tool, 3), dtype=np.float32)
+        state_history = np.zeros((n_his, max_nobj + max_ntool * max_tool, 2), dtype=np.float32)
         for fi in range(n_his):
             # object 
             obj_kp_his = obj_kps[fi]
@@ -300,18 +318,18 @@ class DynDataset(Dataset):
         state_history += np.random.uniform(-state_noise, state_noise, size=state_history.shape)
         
         # TODO: rotation randomness
-        random_rot = np.random.uniform(-np.pi, np.pi)
-        rot_mat = np.array([[np.cos(random_rot), -np.sin(random_rot), 0],
-                            [np.sin(random_rot), np.cos(random_rot), 0],
-                           [0, 0, 1]], dtype=state_history.dtype) # 2D rotation matrix in xy plane
-        state_history = state_history @ rot_mat[None]
-        states_delta = states_delta @ rot_mat
-        tool_future = tool_future @ rot_mat[None]
-        states_delta_future = states_delta_future @ rot_mat[None]
-        obj_kp_future = obj_kp_future @ rot_mat[None]
+        # random_rot = np.random.uniform(-np.pi, np.pi)
+        # rot_mat = np.array([[np.cos(random_rot), -np.sin(random_rot), 0],
+        #                     [np.sin(random_rot), np.cos(random_rot), 0],
+        #                    [0, 0, 1]], dtype=state_history.dtype) # 2D rotation matrix in xy plane
+        # state_history = state_history @ rot_mat[None]
+        # states_delta = states_delta @ rot_mat
+        # tool_future = tool_future @ rot_mat[None]
+        # states_delta_future = states_delta_future @ rot_mat[None]
+        # obj_kp_future = obj_kp_future @ rot_mat[None]
         
         # translation randomness
-        # random_translation = np.random.uniform(-1, 1, size=3)
+        # random_translation = np.random.uniform(-1, 1, size=2)
         # state_history += random_translation[None, None]
         # states_delta += random_translation[None]
         # tool_future += random_translation[None, None]
