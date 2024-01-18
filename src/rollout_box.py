@@ -7,7 +7,7 @@ import json
 import argparse
 import yaml
 
-from gnn.model import DynamicsPredictor
+from gnn.model_box import DynamicsPredictor
 from gnn.utils import set_seed, umeyama_algorithm
 
 import open3d as o3d
@@ -19,10 +19,18 @@ import cv2
 import glob
 from dgl.geometry import farthest_point_sampler
 
-from dataset import construct_edges_from_states, load_dataset
+from dataset_box import construct_edges_from_states, load_dataset
 from utils import rgb_colormap, fps_rad_idx, pad, vis_points, moviepy_merge_video
-from train import truncate_graph
+from train_box import truncate_graph
 
+def draw_points(img, points, point_size=5, point_color=(0,0,255)):
+    for point in points:
+        cv2.circle(img, (int(point[0]), int(point[1])), point_size, point_color, -1)
+    return img
+
+# used for pymunk and pygame coordinate conversion
+def convert_coordinates(point, screen_height=720):
+        return np.array([point[0], screen_height - point[1]])
 
 # component functions for rollout
 def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
@@ -37,8 +45,8 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
     
     if pred_kp_proj_last is None:
         assert gt_kp_proj_last is None
-        pred_kp_proj_last = [None, None, None, None]
-        gt_kp_proj_last = [None, None, None, None]
+        pred_kp_proj_last = [None]
+        gt_kp_proj_last = [None]
     else:
         assert gt_kp_proj_last is not None
     
@@ -48,13 +56,13 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
 
     if gt_lineset is None:
         assert pred_lineset is None
-        gt_lineset = [[], [], [], []]
-        pred_lineset = [[], [], [], []]
+        gt_lineset = [[]]
+        pred_lineset = [[]]
     else:
         assert pred_lineset is not None
-        gt_lineset_new = [[], [], [], []]
-        pred_lineset_new = [[], [], [], []]
-        for lc in range(4):
+        gt_lineset_new = [[]]
+        pred_lineset_new = [[]]
+        for lc in range(1):
             for li in range(len(gt_lineset[lc])):
                 if gt_lineset[lc][li][-1] >= vis_t - t_line:
                     gt_lineset_new[lc].append(gt_lineset[lc][li])
@@ -62,35 +70,29 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
         gt_lineset = gt_lineset_new
         pred_lineset = pred_lineset_new
 
-    for cam in range(4):
-        intr = np.load(os.path.join(data_dir, f"camera_intrinsic_params.npy"))[cam]
-        extr = np.load(os.path.join(data_dir, f"camera_extrinsic_matrix.npy"))[cam]
+    img_path = os.path.join(data_dir, f'episode_{episode_idx:03d}/images', f'{start:03d}.png')
+    img_orig = cv2.imread(img_path)
+    img = img_orig.copy()
+    save_dir_cam = os.path.join(save_dir, f'images')
+    os.makedirs(save_dir_cam, exist_ok=True)
 
-        img_path = os.path.join(data_dir, f'episode_{episode_idx}', f'camera_{cam}', f'{start}_color.jpg')
-        img_orig = cv2.imread(img_path)
-        img = img_orig.copy()
-        # intr = intr_list[cam]
-        # extr = extr_list[cam]
-        save_dir_cam = os.path.join(save_dir, f'camera_{cam}')
-        os.makedirs(save_dir_cam, exist_ok=True)
+    # visualize keypoints
+    kp_vis = convert_coordinates(kp_vis)
+    img = draw_points(img, kp_vis, point_size=point_size, point_color=(255, 0, 0)) # red
+    obj_kp_proj = kp_vis
+    pred_kp_proj_list.append(obj_kp_proj)
+    
+    tool_kp_vis = tool_kp[0].reshape(-1)
+    tool_kp_vis = convert_coordinates(tool_kp_vis).reshape((1,2))
+    img = draw_points(img, tool_kp_vis, point_size=point_size, point_color=(0, 0, 255)) # blue
+    tool_kp_proj = tool_kp_vis
 
-        # visualize keypoints
-        obj_kp_proj, img = vis_points(kp_vis, intr, extr, img, point_size=point_size, point_color=(255, 0, 0)) # blue
-        pred_kp_proj_list.append(obj_kp_proj)
-        
-        tool_kp_vis = tool_kp[0]
-        tool_kp_proj, img = vis_points(tool_kp_vis, intr, extr, img, point_size=point_size, point_color=(0, 0, 255)) # red
-
-        # visualize lineset
-        pred_kp_last = pred_kp_proj_last[cam]
-        # if not (pred_kp_last is None):
-        #     print(f"pred_kp_last: {pred_kp_last.shape}")
-        #     print(f"pred_kp_proj_last: {pred_kp_proj_last[cam].shape}")
-        #     exit()
-        if not (pred_kp_last is None):
-            for k in range(obj_kp_proj.shape[0]):
-                pred_lineset[cam].append([int(obj_kp_proj[k, 0]), int(obj_kp_proj[k, 1]), int(pred_kp_last[k, 0]), int(pred_kp_last[k, 1]), 
-                                    int(colormap[k, 2]), int(colormap[k, 1]), int(colormap[k, 0]), vis_t])
+    # visualize lineset
+    pred_kp_last = pred_kp_proj_last[0]
+    if not (pred_kp_last is None):
+        for k in range(kp_vis.shape[0]):
+            pred_lineset[0].append([int(obj_kp_proj[k, 0]), int(obj_kp_proj[k, 1]), int(pred_kp_last[k, 0]), int(pred_kp_last[k, 1]), 
+                                int(colormap[k, 2]), int(colormap[k, 1]), int(colormap[k, 0]), vis_t])
 
         # visualize edges
         for k in range(Rr.shape[0]):
@@ -108,15 +110,18 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
                     (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])), 
                     (0, 0, 255), edge_size)
             else:
-                cv2.line(img, 
-                    (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])), 
-                    (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])), 
-                    (0, 255, 0), edge_size)
+                try:
+                    cv2.line(img, 
+                        (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[receiver, 1])), 
+                        (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])), 
+                        (0, 255, 0), edge_size)
+                except:
+                    import ipdb; ipdb.set_trace()
 
         # overlay lineset
         img_overlay = img.copy()
-        for k in range(len(pred_lineset[cam])):
-            ln = pred_lineset[cam][k]
+        for k in range(len(pred_lineset[0])):
+            ln = pred_lineset[0][k]
             cv2.line(img_overlay, (ln[0], ln[1]), (ln[2], ln[3]), (ln[4], ln[5], ln[6]), line_size)
 
         cv2.addWeighted(img_overlay, line_alpha, img, 1 - line_alpha, 0, img)
@@ -127,17 +132,21 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
         img = img_orig.copy()
 
         # visualize keypoints
-        gt_kp_proj, img = vis_points(gt_kp_vis, intr, extr, img, point_size=point_size, point_color=(255, 0, 0)) # blue
+        gt_kp_vis = convert_coordinates(gt_kp_vis)
+        img = draw_points(img, gt_kp_vis, point_size=point_size, point_color=(255, 0, 0)) # red
+        gt_kp_proj = gt_kp_vis
         gt_kp_proj_list.append(gt_kp_proj)
-    
-        tool_kp_vis = tool_kp[0]
-        tool_kp_proj, img = vis_points(tool_kp_vis, intr, extr, img, point_size=point_size, point_color=(0, 0, 255)) # red
+        
+        tool_kp_vis = tool_kp[0].reshape(-1)
+        tool_kp_vis = convert_coordinates(tool_kp_vis).reshape((1,2))
+        img = draw_points(img, tool_kp_vis, point_size=point_size, point_color=(0, 0, 255)) # blue
+        tool_kp_proj = tool_kp_vis
 
         # visualize lineset
-        gt_kp_last = gt_kp_proj_last[cam]
+        gt_kp_last = gt_kp_proj_last[0]
         if not (gt_kp_last is None):
             for k in range(gt_kp_proj.shape[0]):
-                gt_lineset[cam].append([int(gt_kp_proj[k, 0]), int(gt_kp_proj[k, 1]), int(gt_kp_last[k, 0]), int(gt_kp_last[k, 1]), 
+                gt_lineset[0].append([int(gt_kp_proj[k, 0]), int(gt_kp_proj[k, 1]), int(gt_kp_last[k, 0]), int(gt_kp_last[k, 1]), 
                                 int(colormap[k, 2]), int(colormap[k, 1]), int(colormap[k, 0]), vis_t])
 
         # visualize edges (for gt, edges will not reflect adjacency)
@@ -162,8 +171,8 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
                     (0, 255, 0), edge_size)
 
         img_overlay = img.copy()
-        for k in range(len(gt_lineset[cam])):
-            ln = gt_lineset[cam][k]
+        for k in range(len(gt_lineset[0])):
+            ln = gt_lineset[0][k]
             cv2.line(img_overlay, (ln[0], ln[1]), (ln[2], ln[3]), (ln[4], ln[5], ln[6]), line_size)
 
         cv2.imwrite(os.path.join(save_dir_cam, f'{start:06}_{end:06}_gt.jpg'), img)
@@ -185,8 +194,9 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
     max_nobj = dataset['max_nobj']
     max_ntool = dataset['max_ntool']
     max_nR = dataset['max_nR']
-    fps_radius = (dataset['fps_radius_range'][0] + dataset['fps_radius_range'][1]) / 2
-    adj_thresh = (dataset['adj_radius_range'][0] + dataset['adj_radius_range'][1]) / 2
+    # fps_radius = (dataset['fps_radius_range'][0] + dataset['fps_radius_range'][1]) / 2
+    # adj_thresh = (dataset['adj_radius_range'][0] + dataset['adj_radius_range'][1]) / 2
+    adj_thresh = 0
     
     ### construct graph ###
 
@@ -211,16 +221,17 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
     # print(f"obj_kp_start: min {obj_kp_start[0].min(0)}, max {obj_kp_start[0].max(0)}")
     for j in range(len(obj_kp_start)):
         # farthest point sampling
-        particle_tensor = torch.from_numpy(obj_kp_start[j]).float()[None, ...]
-        fps_idx_tensor = farthest_point_sampler(particle_tensor, max_nobj, start_idx=np.random.randint(0, obj_kp_start[j].shape[0]))[0]
-        fps_idx_1 = fps_idx_tensor.numpy().astype(np.int32)
+        # particle_tensor = torch.from_numpy(obj_kp_start[j]).float()[None, ...]
+        # fps_idx_tensor = farthest_point_sampler(particle_tensor, max_nobj, start_idx=np.random.randint(0, obj_kp_start[j].shape[0]))[0]
+        # fps_idx_1 = fps_idx_tensor.numpy().astype(np.int32)
 
-        # downsample to uniform radius
-        downsample_particle = particle_tensor[0, fps_idx_1, :].numpy()
-        _, fps_idx_2 = fps_rad_idx(downsample_particle, fps_radius)
-        fps_idx_2 = fps_idx_2.astype(int)
-        # print(f"fps_idx_2: {fps_idx_2.shape}")
-        fps_idx = fps_idx_1[fps_idx_2]
+        # # downsample to uniform radius
+        # downsample_particle = particle_tensor[0, fps_idx_1, :].numpy()
+        # _, fps_idx_2 = fps_rad_idx(downsample_particle, fps_radius)
+        # fps_idx_2 = fps_idx_2.astype(int)
+        # # print(f"fps_idx_2: {fps_idx_2.shape}")
+        # fps_idx = fps_idx_1[fps_idx_2]
+        fps_idx = [0, 1, 2, 3]
         fps_idx_list.append(fps_idx)
 
     # downsample to get current obj kp
@@ -415,15 +426,15 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
     idx_list = [[current_start, current_end]]
     with torch.no_grad():
         for i in range(1, 1 + rollout_steps):
-            # n_frames = np.load(os.path.join(dataset["data_dir"], f"episode_{episode_idx}/particles_pos.npy")).shape[1]
-            n_frames = len(list(glob.glob(os.path.join(dataset['data_dir'], f"episode_{episode_idx}/camera_0/*_color.jpg"))))
+            n_frames = len(list(glob.glob(os.path.join(dataset['data_dir'], f"episode_{episode_idx:3d}/images/*.png"))))
 
             n_his = model.model_config['n_his']
             max_nobj = dataset['max_nobj']
             max_tool = dataset['max_tool']
             max_ntool = dataset['max_ntool']
             max_nR = dataset['max_nR']
-            adj_thresh = (dataset['adj_radius_range'][0] + dataset['adj_radius_range'][1]) / 2
+            # adj_thresh = (dataset['adj_radius_range'][0] + dataset['adj_radius_range'][1]) / 2
+            adj_thresh = 0
 
             graph = truncate_graph(graph)
             pred_state, pred_motion = model(**graph)
@@ -557,15 +568,15 @@ def rollout_episode(model, device, dataset, material_config, pairs, episode_idx,
     np.savetxt(os.path.join(save_dir, f'error.txt'), error_list)
     
     # vis
-    for cam in range(4):
-        img_path = os.path.join(save_dir, f"camera_{cam}")
-        fps = 10
-        pred_out_path = os.path.join(img_path, "pred.mp4")
-        moviepy_merge_video(img_path, 'pred', pred_out_path, fps)
-        gt_out_path = os.path.join(img_path, "gt.mp4")
-        moviepy_merge_video(img_path, 'gt', gt_out_path, fps)
-        both_out_path = os.path.join(img_path, "both.mp4")
-        moviepy_merge_video(img_path, 'both', both_out_path, fps)
+    
+    img_path = os.path.join(save_dir, f"images")
+    fps = 10
+    pred_out_path = os.path.join(img_path, "pred.mp4")
+    moviepy_merge_video(img_path, 'pred', pred_out_path, fps)
+    gt_out_path = os.path.join(img_path, "gt.mp4")
+    moviepy_merge_video(img_path, 'gt', gt_out_path, fps)
+    both_out_path = os.path.join(img_path, "both.mp4")
+    moviepy_merge_video(img_path, 'both', both_out_path, fps)
 
     return error_list
 
@@ -577,7 +588,6 @@ def rollout_episode_pushes(model, device, dataset, material_config, pairs, episo
     # phys_noise = 0.0
 
     # load pushes
-    steps = np.load(os.path.join(dataset['data_dir'], f"episode_{episode_idx}", "steps.npy"))
 
     error_list_pushes = []
     for i in range(len(steps)-1):
@@ -612,15 +622,14 @@ def rollout_episode_pushes(model, device, dataset, material_config, pairs, episo
         np.savetxt(os.path.join(save_dir, f'error_{i}.txt'), error_list)
 
     # vis
-    for cam in range(4):
-        img_path = os.path.join(save_dir, f"camera_{cam}")
-        fps = 10
-        pred_out_path = os.path.join(img_path, "pred.mp4")
-        moviepy_merge_video(img_path, 'pred', pred_out_path, fps)
-        gt_out_path = os.path.join(img_path, "gt.mp4")
-        moviepy_merge_video(img_path, 'gt', gt_out_path, fps)
-        both_out_path = os.path.join(img_path, "both.mp4")
-        moviepy_merge_video(img_path, 'both', both_out_path, fps)
+    img_path = os.path.join(save_dir, f"images")
+    fps = 10
+    pred_out_path = os.path.join(img_path, "pred.mp4")
+    moviepy_merge_video(img_path, 'pred', pred_out_path, fps)
+    gt_out_path = os.path.join(img_path, "gt.mp4")
+    moviepy_merge_video(img_path, 'gt', gt_out_path, fps)
+    both_out_path = os.path.join(img_path, "both.mp4")
+    moviepy_merge_video(img_path, 'both', both_out_path, fps)
         
     return error_list_pushes
 
@@ -635,9 +644,12 @@ def rollout_dataset(model, device, dataset, material_config, save_dir):
     all_particles_pos = []
     all_tool_states = []
     for episode_idx in range(num_episodes):
-        particles_pos = np.load(os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy"))
-        tool_states = np.load(os.path.join(data_dir, f"episode_{episode_idx}/processed_eef_states.npy"))
-        all_particles_pos.append(particles_pos)
+        particles_pos = np.load(os.path.join(data_dir, f"episode_{episode_idx:03d}/processed_box_pos.npy"))
+        num_frames = particles_pos.shape[0]
+        tool_states = np.load(os.path.join(data_dir, f"episode_{episode_idx:03d}/eef_states.npy")).reshape((num_frames, 1, 2))
+        # print(f'episode {episode_idx:03d}: particle: {particles_pos.shape}, tool:{tool_states.shape}')
+        # particles: (50, 4, 2), tool: (50, 2)
+        all_particles_pos.append(particles_pos) 
         all_tool_states.append(tool_states)
 
     total_error_long = []
@@ -648,13 +660,13 @@ def rollout_dataset(model, device, dataset, material_config, save_dir):
         pair_lists_episode = pair_lists[pair_lists[:, 0] == episode_idx][:, 1:]
         physics_params_episode = physics_params[episode_idx]
         
-        save_dir_episode = os.path.join(save_dir, f"{episode_idx}", "long")
+        save_dir_episode = os.path.join(save_dir, f"{episode_idx:03d}", "long")
         os.makedirs(save_dir_episode, exist_ok=True)
         error_list_long = rollout_episode(model, device, dataset, material_config, pair_lists_episode, episode_idx, 
                     physics_params_episode, save_dir_episode, all_particles_pos, all_tool_states)
         total_error_long.append(error_list_long)
         
-        save_dir_episode_pushes = os.path.join(save_dir, f"{episode_idx}", "short")
+        save_dir_episode_pushes = os.path.join(save_dir, f"{episode_idx:03d}", "short")
         os.makedirs(save_dir_episode_pushes, exist_ok=True)
         error_list_short = rollout_episode_pushes(model, device, dataset, material_config, pair_lists_episode, episode_idx,
                     physics_params_episode, save_dir_episode_pushes, all_particles_pos, all_tool_states)

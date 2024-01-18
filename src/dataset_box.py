@@ -205,19 +205,23 @@ class DynDataset(Dataset):
         # TODO: change it to preprocessing?
         for j in range(len(obj_kp_start)):
             # farthers point sampling
-            particle_tensor = torch.from_numpy(obj_kp_start[j]).float()[None, ...] # convert the first dim to None
-            fps_idx_tensor = farthest_point_sampler(particle_tensor, max_nobj, start_idx=np.random.randint(0, obj_kp_start[j].shape[0]))[0]
-            fps_idx_1 = fps_idx_tensor.numpy().astype(np.int32)
+            # particle_tensor = torch.from_numpy(obj_kp_start[j]).float()[None, ...] # convert the first dim to None
+            # fps_idx_tensor = farthest_point_sampler(particle_tensor, max_nobj, start_idx=np.random.randint(0, obj_kp_start[j].shape[0]))[0]
+            # fps_idx_1 = fps_idx_tensor.numpy().astype(np.int32)
             
-            # downsample to uniform radius
-            # downsample_particle = particle_tensor[0, fps_idx_1, :].numpy()
-            # fps_radius = np.random.uniform(fps_radius_range[0], fps_radius_range[1])
-            # _, fps_idx_2 = fps_rad_idx(downsample_particle, fps_radius)
-            # fps_idx_2 = fps_idx_2.astype(np.int32)
-            # # print(f"fps_idx_2: {fps_idx_2.shape}")
-            # fps_idx = fps_idx_1[fps_idx_2]
-            fps_idx = fps_idx_1
+            # # downsample to uniform radius
+            # # downsample_particle = particle_tensor[0, fps_idx_1, :].numpy()
+            # # fps_radius = np.random.uniform(fps_radius_range[0], fps_radius_range[1])
+            # # _, fps_idx_2 = fps_rad_idx(downsample_particle, fps_radius)
+            # # fps_idx_2 = fps_idx_2.astype(np.int32)
+            # # # print(f"fps_idx_2: {fps_idx_2.shape}")
+            # # fps_idx = fps_idx_1[fps_idx_2]
+            # fps_idx = fps_idx_1
+            # print(f"fps_idx: {fps_idx.shape}")
+            # print(f"fps_idx: {fps_idx}")
+            fps_idx = [0, 1, 2, 3] # fully connected graph, apply all points
             fps_idx_list.append(fps_idx)
+        
         
         # downsample to get current obj kp
         obj_kp_start = [obj_kp_start[j][fps_idx] for j, fps_idx in enumerate(fps_idx_list)]
