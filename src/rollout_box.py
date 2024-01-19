@@ -77,14 +77,16 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
     os.makedirs(save_dir_cam, exist_ok=True)
 
     # visualize keypoints
-    kp_vis = convert_coordinates(kp_vis)
-    img = draw_points(img, kp_vis, point_size=point_size, point_color=(255, 0, 0)) # red
+    for i in range(len(kp_vis)):
+        kp_vis[i] = convert_coordinates(kp_vis[i])
+        # print(f"kp_vis[i]: {kp_vis[i].shape}")
+    img = draw_points(img, kp_vis.reshape((4,2)), point_size=point_size, point_color=(0, 0, 255)) # red
     obj_kp_proj = kp_vis
     pred_kp_proj_list.append(obj_kp_proj)
     
     tool_kp_vis = tool_kp[0].reshape(-1)
     tool_kp_vis = convert_coordinates(tool_kp_vis).reshape((1,2))
-    img = draw_points(img, tool_kp_vis, point_size=point_size, point_color=(0, 0, 255)) # blue
+    img = draw_points(img, tool_kp_vis, point_size=point_size, point_color=(0, 255, 0)) # green
     tool_kp_proj = tool_kp_vis
 
     # visualize lineset
@@ -94,92 +96,110 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
             pred_lineset[0].append([int(obj_kp_proj[k, 0]), int(obj_kp_proj[k, 1]), int(pred_kp_last[k, 0]), int(pred_kp_last[k, 1]), 
                                 int(colormap[k, 2]), int(colormap[k, 1]), int(colormap[k, 0]), vis_t])
 
-        # visualize edges
-        for k in range(Rr.shape[0]):
-            if Rr[k].sum() == 0: continue
-            receiver = Rr[k].argmax()
-            sender = Rs[k].argmax()
-            if receiver >= max_nobj:  # tool
+    # visualize edges
+    for k in range(Rr.shape[0]):
+        if Rr[k].sum() == 0: continue
+        receiver = Rr[k].argmax()
+        sender = Rs[k].argmax()
+        if receiver >= max_nobj and sender >= max_nobj:  # tool-tool
+            cv2.line(img,
+                (int(tool_kp_proj[receiver - max_nobj, 0]), int(tool_kp_proj[receiver - max_nobj, 1])),
+                (int(tool_kp_proj[sender - max_nobj, 0]), int(tool_kp_proj[sender - max_nobj, 1])),
+                (0, 0, 255), edge_size)
+        elif receiver >= max_nobj:  # obj-tool
+            try:
                 cv2.line(img, 
                     (int(tool_kp_proj[receiver - max_nobj, 0]), int(tool_kp_proj[receiver - max_nobj, 1])), 
                     (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])), 
                     (0, 0, 255), edge_size)
-            elif sender >= max_nobj:  # tool
+            except:
+                import ipdb; ipdb.set_trace()
+        elif sender >= max_nobj:  # tool-obj
+            cv2.line(img, 
+                (int(tool_kp_proj[sender - max_nobj, 0]), int(tool_kp_proj[sender - max_nobj, 1])), 
+                (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])), 
+                (0, 0, 255), edge_size)
+        else:
+            try:
                 cv2.line(img, 
-                    (int(tool_kp_proj[sender - max_nobj, 0]), int(tool_kp_proj[sender - max_nobj, 1])), 
-                    (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])), 
-                    (0, 0, 255), edge_size)
-            else:
-                try:
-                    cv2.line(img, 
-                        (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[receiver, 1])), 
-                        (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])), 
-                        (0, 255, 0), edge_size)
-                except:
-                    import ipdb; ipdb.set_trace()
-
-        # overlay lineset
-        img_overlay = img.copy()
-        for k in range(len(pred_lineset[0])):
-            ln = pred_lineset[0][k]
-            cv2.line(img_overlay, (ln[0], ln[1]), (ln[2], ln[3]), (ln[4], ln[5], ln[6]), line_size)
-
-        cv2.addWeighted(img_overlay, line_alpha, img, 1 - line_alpha, 0, img)
-        cv2.imwrite(os.path.join(save_dir_cam, f'{start:06}_{end:06}_pred.jpg'), img)
-        img_pred = img.copy()
-
-        # visualize gt similarly
-        img = img_orig.copy()
-
-        # visualize keypoints
-        gt_kp_vis = convert_coordinates(gt_kp_vis)
-        img = draw_points(img, gt_kp_vis, point_size=point_size, point_color=(255, 0, 0)) # red
-        gt_kp_proj = gt_kp_vis
-        gt_kp_proj_list.append(gt_kp_proj)
-        
-        tool_kp_vis = tool_kp[0].reshape(-1)
-        tool_kp_vis = convert_coordinates(tool_kp_vis).reshape((1,2))
-        img = draw_points(img, tool_kp_vis, point_size=point_size, point_color=(0, 0, 255)) # blue
-        tool_kp_proj = tool_kp_vis
-
-        # visualize lineset
-        gt_kp_last = gt_kp_proj_last[0]
-        if not (gt_kp_last is None):
-            for k in range(gt_kp_proj.shape[0]):
-                gt_lineset[0].append([int(gt_kp_proj[k, 0]), int(gt_kp_proj[k, 1]), int(gt_kp_last[k, 0]), int(gt_kp_last[k, 1]), 
-                                int(colormap[k, 2]), int(colormap[k, 1]), int(colormap[k, 0]), vis_t])
-
-        # visualize edges (for gt, edges will not reflect adjacency)
-        for k in range(Rr.shape[0]):
-            if Rr[k].sum() == 0: continue
-            receiver = Rr[k].argmax()
-            sender = Rs[k].argmax()
-            if receiver >= max_nobj:  # tool
-                cv2.line(img, 
-                    (int(tool_kp_proj[receiver - max_nobj, 0]), int(tool_kp_proj[receiver - max_nobj, 1])), 
                     (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])), 
-                    (0, 0, 255), edge_size)
-            elif sender >= max_nobj:  # tool
-                cv2.line(img, 
-                    (int(tool_kp_proj[sender - max_nobj, 0]), int(tool_kp_proj[sender - max_nobj, 1])), 
                     (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])), 
-                    (0, 0, 255), edge_size)
-            else:
-                cv2.line(img, 
-                    (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])), 
-                    (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])), 
                     (0, 255, 0), edge_size)
+            except:
+                import ipdb; ipdb.set_trace()
 
-        img_overlay = img.copy()
-        for k in range(len(gt_lineset[0])):
-            ln = gt_lineset[0][k]
-            cv2.line(img_overlay, (ln[0], ln[1]), (ln[2], ln[3]), (ln[4], ln[5], ln[6]), line_size)
+    # overlay lineset
+    img_overlay = img.copy()
+    for k in range(len(pred_lineset[0])):
+        ln = pred_lineset[0][k]
+        cv2.line(img_overlay, (ln[0], ln[1]), (ln[2], ln[3]), (ln[4], ln[5], ln[6]), line_size)
 
-        cv2.imwrite(os.path.join(save_dir_cam, f'{start:06}_{end:06}_gt.jpg'), img)
-        img_gt = img.copy()
+    cv2.addWeighted(img_overlay, line_alpha, img, 1 - line_alpha, 0, img)
+    cv2.imwrite(os.path.join(save_dir_cam, f'{start:06}_{end:06}_pred.jpg'), img)
+    img_pred = img.copy()
 
-        img = np.concatenate([img_pred, img_gt], axis=1)
-        cv2.imwrite(os.path.join(save_dir_cam, f'{start:06}_{end:06}_both.jpg'), img)
+    # visualize gt similarly
+    img = img_orig.copy()
+
+    # visualize keypoints
+    for i in range(len(gt_kp_vis)):
+        gt_kp_vis[i] = convert_coordinates(gt_kp_vis[i])
+    img = draw_points(img, gt_kp_vis.reshape((4,2)), point_size=point_size, point_color=(0, 0, 255)) # red
+    gt_kp_proj = gt_kp_vis
+    gt_kp_proj_list.append(gt_kp_proj)
+    
+    tool_kp_vis = tool_kp[0].reshape(-1)
+    tool_kp_vis = convert_coordinates(tool_kp_vis).reshape((1,2))
+    img = draw_points(img, tool_kp_vis, point_size=point_size, point_color=(0, 255, 0)) # green
+    tool_kp_proj = tool_kp_vis
+
+    # visualize lineset
+    try:
+        gt_kp_last = gt_kp_proj_last[0]
+    except:
+        import ipdb; ipdb.set_trace()
+    
+    if not (gt_kp_last is None):
+        for k in range(gt_kp_proj.shape[0]):
+            gt_lineset[0].append([int(gt_kp_proj[k, 0]), int(gt_kp_proj[k, 1]), int(gt_kp_last[k, 0]), int(gt_kp_last[k, 1]), 
+                            int(colormap[k, 2]), int(colormap[k, 1]), int(colormap[k, 0]), vis_t])
+
+    # visualize edges (for gt, edges will not reflect adjacency)
+    for k in range(Rr.shape[0]):
+        if Rr[k].sum() == 0: continue
+        receiver = Rr[k].argmax()
+        sender = Rs[k].argmax()
+        if receiver >= max_nobj and sender >= max_nobj:  # tool-tool
+            cv2.line(img,
+                (int(tool_kp_proj[receiver - max_nobj, 0]), int(tool_kp_proj[receiver - max_nobj, 1])),
+                (int(tool_kp_proj[sender - max_nobj, 0]), int(tool_kp_proj[sender - max_nobj, 1])),
+                (0, 0, 255), edge_size)
+        elif receiver >= max_nobj:  # obj-tool
+            cv2.line(img, 
+                (int(tool_kp_proj[receiver - max_nobj, 0]), int(tool_kp_proj[receiver - max_nobj, 1])), 
+                (int(gt_kp_proj[sender, 0]), int(gt_kp_proj[sender, 1])), 
+                (0, 0, 255), edge_size)
+        elif sender >= max_nobj:  # tool-obj
+            cv2.line(img, 
+                (int(tool_kp_proj[sender - max_nobj, 0]), int(tool_kp_proj[sender - max_nobj, 1])), 
+                (int(gt_kp_proj[receiver, 0]), int(gt_kp_proj[receiver, 1])), 
+                (0, 0, 255), edge_size)
+        else: # obj-obj
+            cv2.line(img, 
+                (int(gt_kp_proj[receiver, 0]), int(gt_kp_proj[receiver, 1])), 
+                (int(gt_kp_proj[sender, 0]), int(gt_kp_proj[sender, 1])), 
+                (0, 255, 0), edge_size)
+
+    img_overlay = img.copy()
+    for k in range(len(gt_lineset[0])):
+        ln = gt_lineset[0][k]
+        cv2.line(img_overlay, (ln[0], ln[1]), (ln[2], ln[3]), (ln[4], ln[5], ln[6]), line_size)
+
+    cv2.imwrite(os.path.join(save_dir_cam, f'{start:06}_{end:06}_gt.jpg'), img)
+    img_gt = img.copy()
+
+    img = np.concatenate([img_pred, img_gt], axis=1)
+    cv2.imwrite(os.path.join(save_dir_cam, f'{start:06}_{end:06}_both.jpg'), img)
     
     pred_kp_proj_last = pred_kp_proj_list
     gt_kp_proj_last = gt_kp_proj_list
@@ -414,6 +434,8 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
         Rs = graph['Rs'].numpy()
         tool_kp = graph['tool_kp'].numpy() # (2, tool_kp_num, 3)
         kp_vis = graph['state'][-1, :obj_kp_num].numpy()
+        # print('kp_vis', kp_vis.shape)
+        # print(f'obj_kp_num: {obj_kp_num}, tool_kp_num: {tool_kp_num}')
         pred_kp_proj_last, gt_kp_proj_last, gt_lineset, pred_lineset = \
             visualize_graph(dataset['data_dir'], episode_idx, current_start, current_end, 0, save_dir,
             kp_vis, kp_vis, tool_kp, Rr, Rs, max_nobj)
@@ -590,36 +612,36 @@ def rollout_episode_pushes(model, device, dataset, material_config, pairs, episo
     # load pushes
 
     error_list_pushes = []
-    for i in range(len(steps)-1):
-        # set valid pairs, which the first frame is the current step
-        valid_pairs = pairs[pairs[:, 0] == steps[i]]
-        try:
-            assert len(valid_pairs) > 0
-        except:
-            import ipdb; ipdb.set_trace()
-        pair = valid_pairs[0]
+    
+    # set valid pairs, which the first frame is the current step
+    valid_pairs = pairs[pairs[:, 0] == 0]
+    try:
+        assert len(valid_pairs) > 0
+    except:
+        import ipdb; ipdb.set_trace()
+    pair = valid_pairs[0]
 
-        start = pair[n_his-1]
-        end = pair[n_his]
+    start = pair[n_his-1]
+    end = pair[n_his]
 
-        graph, fps_idx_list = construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_config, all_particles_pos, all_tool_states)
-        
-        error_list = rollout_from_start_graph(graph, model, material_config, device, dataset, episode_idx, start, end, 
-                get_next_pair_or_break_episode_pushes, fps_idx_list, pairs, save_dir, all_particles_pos, all_tool_states)
-        
-        error_list_pushes.append(error_list)
+    graph, fps_idx_list = construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_config, all_particles_pos, all_tool_states)
+    
+    error_list = rollout_from_start_graph(graph, model, material_config, device, dataset, episode_idx, start, end, 
+            get_next_pair_or_break_episode_pushes, fps_idx_list, pairs, save_dir, all_particles_pos, all_tool_states)
+    
+    error_list_pushes.append(error_list)
 
-        # plot error
-        plt.figure(figsize=(10, 5))
-        plt.plot(error_list)
-        plt.xlabel("time step")
-        plt.ylabel("error")
-        plt.grid()
-        plt.savefig(os.path.join(save_dir, f'error_{i}.png'), dpi=300)
-        plt.close()
+    # plot error
+    plt.figure(figsize=(10, 5))
+    plt.plot(error_list)
+    plt.xlabel("time step")
+    plt.ylabel("error")
+    plt.grid()
+    plt.savefig(os.path.join(save_dir, f'error.png'), dpi=300)
+    plt.close()
 
-        error_list = np.array(error_list)
-        np.savetxt(os.path.join(save_dir, f'error_{i}.txt'), error_list)
+    error_list = np.array(error_list)
+    np.savetxt(os.path.join(save_dir, f'error.txt'), error_list)
 
     # vis
     img_path = os.path.join(save_dir, f"images")

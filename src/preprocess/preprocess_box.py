@@ -53,8 +53,9 @@ def extract_box_points(data_dir):
             
             for j in range(num_box_points):
                 point = box_points_in_box[j]
-                point_rotated_x = point[0] * np.cos(box_rad) + point[1] * np.sin(box_rad)
-                point_rotated_y = -point[0] * np.sin(box_rad) + point[1] * np.cos(box_rad)
+                # TODO
+                point_rotated_x = point[0] * np.cos(box_rad) - point[1] * np.sin(box_rad)
+                point_rotated_y = point[0] * np.sin(box_rad) + point[1] * np.cos(box_rad)
                 point_rotated = np.array([point_rotated_x, point_rotated_y])
                 point_world = box_pos + point_rotated
                 processed_box_pos[i, j] = point_world
@@ -174,12 +175,12 @@ if __name__ == "__main__":
     for data_dir, save_dir in zip(data_dir_list, save_dir_list):
         if os.path.isdir(data_dir):
             os.makedirs(save_dir, exist_ok=True)
-            # print("================extract_pushes================")
-            # extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
-            # print("==============================================")
-            # print("================extract_box_points================")
-            # extract_box_points(data_dir)
-            # print("==================================================")
+            print("================extract_pushes================")
+            extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
+            print("==============================================")
+            print("================extract_box_points================")
+            extract_box_points(data_dir)
+            print("==================================================")
             print("================extract_physics_params================")
             extract_physics_params(data_dir)
             print("======================================================")
