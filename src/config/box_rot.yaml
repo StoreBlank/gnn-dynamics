@@ -1,5 +1,5 @@
 train_config:
-  out_dir: "/mnt/nvme1n1p1/baoyu/logs/box_0118_debug_4"
+  out_dir: "/mnt/nvme1n1p1/baoyu/logs/box_rot"
   phases: ["train", "valid"]
   load_model: False
   model_checkpoint: "/mnt/nvme1n1p1/baoyu/checkpoints/latest.pth"

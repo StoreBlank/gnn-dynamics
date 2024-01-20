@@ -166,11 +166,11 @@ if __name__ == "__main__":
         f"/mnt/nvme1n1p1/baoyu/data/{data_name}"
     ]
     save_dir_list = [
-        f"/mnt/nvme1n1p1/baoyu/preprocess_010/{data_name}"
+        f"/mnt/nvme1n1p1/baoyu/preprocess_010_fu5/{data_name}"
     ]
     dist_thresh = 10 #10mm=1cm
     n_his = 4
-    n_future = 3
+    n_future = 5
     
     for data_dir, save_dir in zip(data_dir_list, save_dir_list):
         if os.path.isdir(data_dir):

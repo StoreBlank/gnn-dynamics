@@ -11,87 +11,35 @@ from utils import pad, pad_torch, fps_rad_idx
 
 def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edge=False, pushing_direction=None):  # helper function for construct_graph
     
-    # no_self_edge = False
-
-    def triangle_area(a, b, c):
-        # a, b, c: (batch_size, 2)
-        # return: (batch_size, )
-        ab = b - a
-        ac = c - a
-        return torch.abs(ab[:, 0] * ac[:, 1] - ab[:, 1] * ac[:, 0]) / 2
-
-    def tool_near_obj_polygon():
-        assert states.shape[1] == 5
-        assert states.shape[2] == 2
-
-        obj = states[:, :4].clone()  # (batch_size, 4, 2)
-        tool = states[:, 4].clone()  # (batch_size, 2)
-
-        # 0 --- 1
-        # |     |
-        # 3 --- 2
-
-        e01 = (obj[:, 1] - obj[:, 0]).clone() / ((obj[:, 1] - obj[:, 0]).clone().norm(dim=-1, keepdim=True) + 1e-4)  # (batch_size, 2)
-        e12 = (obj[:, 2] - obj[:, 1]).clone() / ((obj[:, 2] - obj[:, 1]).clone().norm(dim=-1, keepdim=True) + 1e-4)
-        e23 = (obj[:, 3] - obj[:, 2]).clone() / ((obj[:, 3] - obj[:, 2]).clone().norm(dim=-1, keepdim=True) + 1e-4)
-        e30 = (obj[:, 0] - obj[:, 3]).clone() / ((obj[:, 0] - obj[:, 3]).clone().norm(dim=-1, keepdim=True) + 1e-4)
-
-        adj_thresh = 0.20  # 2.0cm
-
-        obj[:, 0] -= e01 * adj_thresh
-        obj[:, 1] += e01 * adj_thresh
-        obj[:, 1] -= e12 * adj_thresh
-        obj[:, 2] += e12 * adj_thresh
-        obj[:, 2] -= e23 * adj_thresh
-        obj[:, 3] += e23 * adj_thresh
-        obj[:, 3] -= e30 * adj_thresh
-        obj[:, 0] += e30 * adj_thresh
-
-        t01 = triangle_area(tool, obj[:, 0], obj[:, 1])  # (batch_size, )
-        t12 = triangle_area(tool, obj[:, 1], obj[:, 2])
-        t23 = triangle_area(tool, obj[:, 2], obj[:, 3])
-        t30 = triangle_area(tool, obj[:, 3], obj[:, 0])
-
-        rect_area = triangle_area(obj[:, 0], obj[:, 1], obj[:, 2]) + triangle_area(obj[:, 0], obj[:, 2], obj[:, 3])
-
-        return t01 + t23 + t12 + t30 <= rect_area + 1e-6
-
+    no_self_edge = False
+    
     B, N, state_dim = states.shape # (batch_size, obj_points+eef_points, 2)
-    # s_receiv = states[:, :, None, :].repeat(1, 1, N, 1)
-    # s_sender = states[:, None, :, :].repeat(1, N, 1, 1)
+    s_receiv = states[:, :, None, :].repeat(1, 1, N, 1)
+    s_sender = states[:, None, :, :].repeat(1, N, 1, 1)
     
     # no threshold: fully connected graph
-    # s_diff = s_receiv - s_sender # (batch_size, N, N, 2)
-    # dis = torch.sum(s_diff ** 2, dim=-1) # (batch_size, N, N)
+    s_diff = s_receiv - s_sender # (batch_size, N, N, 2)
+    dis = torch.sum(s_diff ** 2, dim=-1) # (batch_size, N, N)
     mask_1 = mask[:, :, None].repeat(1, 1, N) # particle receiver
     mask_2 = mask[:, None, :].repeat(1, N, 1) # particle sender
     mask_12 = mask_1 * mask_2
-    # dis[~mask_12] = 1e10 # avoid invalid particles to particles relations
+    dis[~mask_12] = 1e10 # avoid invalid particles to particles relations
     
     tool_mask_1 = tool_mask[:, :, None].repeat(1, 1, N) # tool particle receiver
     tool_mask_2 = tool_mask[:, None, :].repeat(1, N, 1) # tool particle sender
     tool_mask_12 = tool_mask_1 * tool_mask_2
-    # dis[tool_mask_12] = 1e10 # avoid tool to tool relations
+    dis[tool_mask_12] = 1e10 # avoid tool to tool relations
 
-    adj_matrix = torch.ones((B, N, N), dtype=torch.float32, device=states.device)
-    adj_matrix[~mask_12] = 0
-
-    obj_tool_mask_1 = tool_mask_1 * mask_2  # particle sender, tool receiver
-    obj_tool_mask_2 = tool_mask_2 * mask_1  # particle receiver, tool sender
-
-    obj_tool_mask = (obj_tool_mask_1 + obj_tool_mask_2).bool()
-
-    near_flag = tool_near_obj_polygon()
-    not_near_obj_tool_mask = obj_tool_mask & ~near_flag[:, None, None]
-    adj_matrix[not_near_obj_tool_mask] = 0
-
-    adj_matrix[tool_mask_12] = 0
+    # adj_matrix = torch.ones((B, N, N), dtype=torch.float32, device=states.device)
+    threshold = torch.ones((B,), dtype=torch.float32, device=states.device) * 100
+    adj_matrix = ((dis - threshold[:, None, None]) < 0).to(torch.float32)
+    adj_matrix[:4, :4] = 1 # fully connected for obj
     
     # remove self edge
-    # if no_self_edge:
-    #     self_edge_mask = torch.eye(N, device=states.device, dtype=states.dtype)[None, :, :]
-    #     adj_matrix = adj_matrix * (1 - self_edge_mask)
-
+    if no_self_edge:
+        self_edge_mask = torch.eye(N, device=states.device, dtype=states.dtype)[None, :, :]
+        adj_matrix = adj_matrix * (1 - self_edge_mask)
+    
     n_rels = adj_matrix.sum(dim=(1,2))
     n_rel = n_rels.max().long().item()
     # print(f"n_rel: {n_rel}") #25
@@ -204,9 +152,9 @@ class DynDataset(Dataset):
         self.all_particle_pos = []
         self.all_tool_states = []
         for episode_idx in range(num_episodes):
-            particles_pos = np.load(os.path.join(data_dir, f"episode_{episode_idx:03d}/processed_box_pos.npy")) / 100. # convert to decimeter
+            particles_pos = np.load(os.path.join(data_dir, f"episode_{episode_idx:03d}/processed_box_pos.npy"))
             num_frames = particles_pos.shape[0]
-            tool_states = np.load(os.path.join(data_dir, f"episode_{episode_idx:03d}/eef_states.npy")).reshape((num_frames, 1, 2)) / 100. # convert to decimeter
+            tool_states = np.load(os.path.join(data_dir, f"episode_{episode_idx:03d}/eef_states.npy")).reshape((num_frames, 1, 2))
             # print(f'episode {episode_idx:03d}: particle: {particles_pos.shape}, tool:{tool_states.shape}')
             # particles: (50, 4, 2), tool: (50, 2)
             self.all_particle_pos.append(particles_pos) 
@@ -244,9 +192,6 @@ class DynDataset(Dataset):
             obj_kp = self.all_particle_pos[episode_idx][frame_idx][None] # (1, num_obj_points, 2)
             tool_kp = self.all_tool_states[episode_idx][frame_idx] # (num_tool_points, 2)
             # print(obj_kp.shape, tool_kp.shape)
-
-            # obj_kp /= 100. # convert to decimeter
-            # tool_kp /= 100. # convert to decimeter
             
             obj_kps.append(obj_kp)
             tool_kps.append(tool_kp) # (7, num_tool_points, 2)
@@ -345,70 +290,49 @@ class DynDataset(Dataset):
         tool_mask[max_nobj : max_nobj + tool_kp_num] = True # dynamic tool
         
         # construct instance information
-        # p_rigid = np.zeros(max_n, dtype=np.float32)
-        # p_instance = np.zeros((max_nobj, max_n), dtype=np.float32)
-        # j_perm = np.random.permutation(instance_num)
-        # ptcl_cnt = 0
-        # # sanity check
-        # assert sum([len(fps_idx_list[j]) for j in range(len(fps_idx_list))]) == obj_kp_num
-        # # fill in p_instance
-        # for j in range(instance_num):
-        #     p_instance[ptcl_cnt:ptcl_cnt + len(fps_idx_list[j_perm[j]]), j_perm[j]] = 1
-        #     ptcl_cnt += len(fps_idx_list[j_perm[j]])
+        p_rigid = np.zeros(max_n, dtype=np.float32)
+        p_instance = np.zeros((max_nobj, max_n), dtype=np.float32)
+        j_perm = np.random.permutation(instance_num)
+        ptcl_cnt = 0
+        # sanity check
+        assert sum([len(fps_idx_list[j]) for j in range(len(fps_idx_list))]) == obj_kp_num
+        # fill in p_instance
+        for j in range(instance_num):
+            p_instance[ptcl_cnt:ptcl_cnt + len(fps_idx_list[j_perm[j]]), j_perm[j]] = 1
+            ptcl_cnt += len(fps_idx_list[j_perm[j]])
         
         # construct physics information
         physics_param = self.physics_params[dataset_idx][episode_idx]  # dict
-
-        assert len(physics_param.keys()) == 1, 'only support single material'
-        assert list(physics_param.keys())[0] == 'rigid', 'only support rigid material'
-
-        physics_param['rigid'] -= 0.5  # in center frame
-        # physics_param['rigid'][0] *= (87.2755 + 82.2278) / 100. # in decimeter
-        # physics_param['rigid'][1] *= (44.4932 + 44.4954) / 100. # in decimeter
-
-        # for material_name in dataset_config['materials']:
-        #     if material_name not in physics_param.keys():
-        #         raise ValueError(f'Physics parameter {material_name} not found in {dataset_config["data_dir"]}')
-        #     physics_param[material_name] += np.random.uniform(-phys_noise, phys_noise, 
-        #             size=physics_param[material_name].shape)
-
+        for material_name in dataset_config['materials']:
+            if material_name not in physics_param.keys():
+                raise ValueError(f'Physics parameter {material_name} not found in {dataset_config["data_dir"]}')
+            physics_param[material_name] += np.random.uniform(-phys_noise, phys_noise, 
+                    size=physics_param[material_name].shape)
+        
         # new: construct physics information for each particle
         material_idx = np.zeros((max_nobj, len(self.material_config['material_index'])), dtype=np.int32)
         assert len(dataset_config['materials']) == 1, 'only support single material'
         material_idx[:obj_kp_num, self.material_config['material_index'][dataset_config['materials'][0]]] = 1
         
         # construct attributes
-        attr_dim = 5 # (obj, tool)
+        attr_dim = 2 # (obj, tool)
         attrs = np.zeros((max_nobj + max_ntool * max_tool, attr_dim), dtype=np.float32)
-        assert obj_kp_num == 4
-        attrs[0, 0] = 1.
-        attrs[1, 1] = 1.
-        attrs[2, 2] = 1.
-        attrs[3, 3] = 1.
-        attrs[max_nobj : max_nobj + tool_kp_num, 4] = 1.
+        attrs[:obj_kp_num, 0] = 1.
+        attrs[max_nobj : max_nobj + tool_kp_num, 1] = 1.
         
         # state randomness
-        random_rot = np.random.uniform(-state_noise, state_noise, size=(n_his,))  # (n_his, )
-        assert state_history.shape == (n_his, 5, 2)
-        for fi in range(n_his):
-            rot_mat = np.array([[np.cos(random_rot[fi]), -np.sin(random_rot[fi])],
-                                [np.sin(random_rot[fi]), np.cos(random_rot[fi])]], dtype=state_history.dtype)
-            state_history[fi, :4] = state_history[fi, :4].copy() @ rot_mat[None]
-
-        # state_history += np.random.uniform(-state_noise, state_noise, size=state_history.shape)
+        state_history += np.random.uniform(-state_noise, state_noise, size=state_history.shape)
         
         # TODO: rotation randomness
-        random_rot = np.random.uniform(-np.pi, np.pi)
-        rot_mat = np.array([[np.cos(random_rot), -np.sin(random_rot)],
-                            [np.sin(random_rot), np.cos(random_rot)]], dtype=state_history.dtype)
+        # random_rot = np.random.uniform(-np.pi, np.pi)
         # rot_mat = np.array([[np.cos(random_rot), -np.sin(random_rot), 0],
         #                     [np.sin(random_rot), np.cos(random_rot), 0],
         #                    [0, 0, 1]], dtype=state_history.dtype) # 2D rotation matrix in xy plane
-        state_history = state_history @ rot_mat[None]
-        states_delta = states_delta @ rot_mat
-        tool_future = tool_future @ rot_mat[None]
-        states_delta_future = states_delta_future @ rot_mat[None]
-        obj_kp_future = obj_kp_future @ rot_mat[None]
+        # state_history = state_history @ rot_mat[None]
+        # states_delta = states_delta @ rot_mat
+        # tool_future = tool_future @ rot_mat[None]
+        # states_delta_future = states_delta_future @ rot_mat[None]
+        # obj_kp_future = obj_kp_future @ rot_mat[None]
         
         # translation randomness
         # random_translation = np.random.uniform(-1, 1, size=2)
@@ -444,10 +368,6 @@ class DynDataset(Dataset):
         # Rr = pad_torch(Rr, max_nR)
         # Rs = pad_torch(Rs, max_nR)
 
-        # if np.abs(state_history[-1]).max() < 0.2:
-        #     print(f'episode {episode_idx} has small state')
-        #     raise ValueError('episode has small state')
-
         # save graph
         graph = {
             ## N: max_nobj, M: max_ntool
@@ -468,18 +388,17 @@ class DynDataset(Dataset):
             
             # attr info
             "attrs": attrs, # (N+2M, attr_dim)
-            # "p_rigid": p_rigid, # (n_instance, )
-            # "p_instance": p_instance, # (N, n_instance)
+            "p_rigid": p_rigid, # (n_instance, )
+            "p_instance": p_instance, # (N, n_instance)
             # "physics_param": physics_param, # (N, phys_dim)
             "state_mask": state_mask, # (N+2M, )
             "tool_mask": tool_mask, # (N+2M, )
             "obj_mask": obj_mask, # (N, )
 
-            # "pushing_direction": pushing_direction, # (3, )
+            "pushing_direction": pushing_direction, # (3, )
         }
 
         for material_name, material_dim in self.materials.items():
-            assert material_name == 'rigid'
             if material_name in physics_param.keys():
                 graph[material_name + '_physics_param'] = physics_param[material_name]
             else:

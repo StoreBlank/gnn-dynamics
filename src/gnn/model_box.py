@@ -130,25 +130,12 @@ class DynamicsPredictor(nn.Module):
                 if param['use']:
                     material_dim_list[i] += 1
 
-        if self.num_materials > 1:
-            input_dim = model_config['n_his'] * model_config['state_dim'] + \
-                        model_config['n_his'] * model_config['offset_dim'] + \
-                        model_config['attr_dim'] + \
-                        model_config['action_dim'] + \
-                        model_config['density_dim'] + \
-                        self.num_materials + self.nf_physics
-            
-            # PhysicsEncoder
-            self.physics_encoders = nn.ModuleList(
-                [Encoder(material_dim_list[i], model_config['nf_physics_hidden'], self.nf_physics) for i in range(self.num_materials)])
-        
-        else:
-            input_dim = model_config['n_his'] * model_config['state_dim'] + \
-                        model_config['n_his'] * model_config['offset_dim'] + \
-                        model_config['attr_dim'] + \
-                        model_config['action_dim'] + \
-                        model_config['density_dim'] + \
-                        material_dim_list[0]
+        input_dim = model_config['n_his'] * model_config['state_dim'] + \
+                    model_config['n_his'] * model_config['offset_dim'] + \
+                    model_config['attr_dim'] + \
+                    model_config['action_dim'] + \
+                    model_config['density_dim'] + \
+                    material_dim_list[0]
 
         self.particle_encoder = Encoder(input_dim, self.nf_particle, self.nf_effect)
 
@@ -156,18 +143,11 @@ class DynamicsPredictor(nn.Module):
         if model_config['rel_particle_dim'] == -1:
             model_config['rel_particle_dim'] = input_dim
 
-        # rel_input_dim = args.rel_particle_dim * 2 + args.rel_attr_dim * 2 + args.rel_can_attr_dim \
-        #         + args.rel_group_dim + args.n_his * args.rel_distance_dim + args.rel_density_dim \
-        #         + args.rel_canonical_distance_dim + args.rel_canonical_attr_dim
-
         rel_input_dim = model_config['rel_particle_dim'] * 2 + \
-                        model_config['rel_attr_dim'] * 2 + \
+                        model_config['rel_attr_dim'] + \
                         model_config['rel_group_dim'] + \
                         model_config['rel_distance_dim'] * model_config['n_his'] + \
-                        model_config['rel_density_dim'] # + \
-                        # model_config['rel_can_attr_dim'] + \
-                        # model_config['rel_canonical_distance_dim'] + \
-                        # model_config['rel_canonical_attr_dim']
+                        model_config['rel_density_dim']
         self.relation_encoder = Encoder(rel_input_dim, self.nf_relation, self.nf_effect)
 
         # ParticlePropagator
@@ -175,43 +155,15 @@ class DynamicsPredictor(nn.Module):
 
         # RelationPropagator
         self.relation_propagator = Propagator(self.nf_effect * 3, self.nf_effect)
-        # NOTE: dyn-res-manip adds a particle density to the relation propagator, 
-        # which I think is unnecessary since the density is already included in the particle encoder.
 
-        # ParticlePredictor
-        # self.non_rigid_out_dim = kwargs["non_rigid_out_dim"]
-        # self.rigid_out_dim = kwargs["rigid_out_dim"]
-        # if kwargs["predict_non_rigid"]:
-        #     self.non_rigid_predictor = ParticlePredictor(self.nf_effect, self.nf_effect, kwargs["non_rigid_out_dim"])
-        # else:
-        #     self.non_rigid_predictor = None
-        # if kwargs["predict_rigid"]:
-        #     self.rigid_predictor = ParticlePredictor(self.nf_effect, self.nf_effect, kwargs["rigid_out_dim"])
-        # else:
-        #     self.rigid_predictor = None
-
-        self.non_rigid_predictor = ParticlePredictor(self.nf_effect, self.nf_effect, 2)
-        # self.rigid_predictor = None
+        self.rigid_predictor = ParticlePredictor(self.nf_effect, self.nf_effect, 3)  # 2 for translation, 1 for rotation
         
         if model_config['verbose']:
             print("DynamicsPredictor initialized")
             print("particle input dim: {}, relation input dim: {}".format(input_dim, rel_input_dim))
-            # print("non-rigid output dim: {}, rigid output dim: {}".format(kwargs["non_rigid_out_dim"], kwargs["rigid_out_dim"]))
-    
-    # def vae_loss(self, *_):
-    #     assert self.args.use_vae
-    #     assert self.physics_param_mean is not None
-    #     assert self.physics_param_logvar is not None
-
-    #     mu = self.physics_param_mean
-    #     log_var = self.physics_param_logvar
-
-    #     # KL divergence
-    #     kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim = 1), dim = 0)
-    #     return kld_loss
 
     # @profile
-    def forward(self, state, attrs, Rr, Rs, p_instance, 
+    def forward(self, state, attrs, Rr, Rs, p_instance=None, 
             action=None, particle_den=None, obj_mask=None, **kwargs):  
             # physics_param=None, canonical_state=None, rel_can_attrs=None, 
             # verbose=False, phys_encoded_noise=0.1, memory=None, offset=None
@@ -219,10 +171,14 @@ class DynamicsPredictor(nn.Module):
         n_his = self.model_config['n_his']
 
         B, N = attrs.size(0), attrs.size(1)  # batch size, total particle num
-        n_instance = p_instance.size(2)  # number of instances
-        n_p = p_instance.size(1)  # number of object particles (that need prediction)
-        n_s = attrs.size(1) - n_p  # number of shape particles that do not need prediction
+        # n_instance = p_instance.size(2)  # number of instances
+        # n_p = p_instance.size(1)  # number of object particles (that need prediction)
+        # n_s = attrs.size(1) - n_p  # number of shape particles that do not need prediction
+        n_p = 4
+        n_s = 1
+        assert n_p + n_s == N
         n_rel = Rr.size(1)  # number of relations
+        assert n_rel in [16, 24]
         state_dim = state.size(3)  # state dimension
 
         # attrs: B x N x attr_dim
@@ -247,6 +203,7 @@ class DynamicsPredictor(nn.Module):
         state_cur = state[:, -1:]
 
         if self.state_normalize:
+            raise NotImplementedError
             # *_p: absolute scale to model scale, *_d: residual scale to model scale
             mean_p, std_p, mean_d, std_d = self.mean_p, self.std_p, self.mean_d, self.std_d
             state_res_norm = (state_res - mean_d) / std_d
@@ -262,6 +219,14 @@ class DynamicsPredictor(nn.Module):
         state_norm = torch.cat([state_res_norm, state_cur_norm], 1)
         state_norm_t = state_norm.transpose(1, 2).contiguous().view(B, N, n_his * state_dim)
 
+        # TODO
+        physics_param = kwargs['rigid_physics_param']
+        com_x = physics_param[:, 0:1]  # (B, 2)
+        com_y = physics_param[:, 1:2]  # (B, 2)
+        kps = state_cur_norm[:, 0]  # (B, 5, 2)
+        com_real = kps[:, 3] + (kps[:, 2] - kps[:, 3]) * (com_x + 0.5) \
+                             + (kps[:, 0] - kps[:, 3]) * (com_y + 0.5)  # (B, 2)
+
         # p_inputs: B x N x attr_dim
         p_inputs = attrs
 
@@ -271,8 +236,8 @@ class DynamicsPredictor(nn.Module):
             p_inputs = torch.cat([attrs, state_norm_t], 2)
 
         # instance_center: B x n_instance x (n_his * state_dim)
-        instance_center = p_instance.transpose(1, 2).bmm(state_norm_t[:, :n_p])
-        instance_center /= torch.sum(p_instance, 1).unsqueeze(-1) + self.eps
+        # instance_center = p_instance.transpose(1, 2).bmm(state_norm_t[:, :n_p])
+        # instance_center /= torch.sum(p_instance, 1).unsqueeze(-1) + self.eps
 
         # other inputs
         if self.model_config['offset_dim'] > 0:
@@ -339,6 +304,7 @@ class DynamicsPredictor(nn.Module):
 
         # physics
         if self.num_materials > 1:
+            raise NotImplementedError
             physics_keys = [k for k in kwargs.keys() if k.endswith('_physics_param')]
             materials_keys = [k.replace('_physics_param', '') for k in physics_keys]
             materials_idxs = [self.material_config['material_index'][k] for k in materials_keys]
@@ -395,7 +361,11 @@ class DynamicsPredictor(nn.Module):
             # p_inputs: B x N x (... + action_dim)
             p_inputs = torch.cat([p_inputs, action], 2)
 
+            act_com_diff = kps - com_real[:, None]  # (B, 5, 2)
+            p_inputs = torch.cat([p_inputs, act_com_diff], 2)
+
         if self.model_config['density_dim'] > 0:
+            raise NotImplementedError
             assert particle_den is not None
             # particle_den = particle_den / 5000.
 
@@ -427,8 +397,9 @@ class DynamicsPredictor(nn.Module):
             attrs_r = Rr.bmm(attrs)
             attrs_s = Rs.bmm(attrs)
 
-            # rel_inputs: B x n_rel x (... + 2 x rel_attr_dim)
-            rel_inputs = torch.cat([rel_inputs, attrs_r, attrs_s], 2)
+            # TODO
+            # rel_inputs: B x n_rel x (... + rel_attr_dim)
+            rel_inputs = torch.cat([rel_inputs, attrs_r - attrs_s], 2)
         
         # if self.model_config['rel_can_attr_dim'] > 0:
         #     assert rel_can_attrs is not None
@@ -438,6 +409,7 @@ class DynamicsPredictor(nn.Module):
         #     rel_inputs = torch.cat([rel_inputs, rel_can_attrs], 2)
 
         if self.model_config['rel_group_dim'] > 0:
+            raise NotImplementedError
             assert self.model_config['rel_group_dim'] == 1
             # receiver_group, sender_group
             # group_r: B x n_rel x -1
@@ -490,6 +462,7 @@ class DynamicsPredictor(nn.Module):
         #     rel_inputs = torch.cat([rel_inputs, can_pos_binary.float()], 2)
 
         if self.model_config['rel_density_dim'] > 0:
+            raise NotImplementedError
             assert self.model_config['rel_density_dim'] == 1
             # receiver_density, sender_density
             # dens_r: B x n_rel x -1
@@ -539,10 +512,20 @@ class DynamicsPredictor(nn.Module):
             if self.model_config['verbose']:
                  print("particle effect:", particle_effect.size())
 
-        # non-rigid motion
-        # if self.non_rigid_predictor is not None:
-        # non_rigid_motion: B x n_p x state_dim
-        non_rigid_motion = self.non_rigid_predictor(particle_effect[:, :n_p].contiguous())
+        rigid_motion = self.rigid_predictor(particle_effect[:, :n_p].contiguous())
+
+        pred_R = rigid_motion[:, :, :1].mean(1)[:, 0] * 0.1  # (B,)
+        pred_t = rigid_motion[:, :, 1:].mean(1)  # (B, 2)
+
+        pred_R = torch.clamp(pred_R, min=-torch.pi, max=torch.pi)
+
+        rot_mat = torch.zeros(B, 2, 2).to(self.device)
+        rot_mat[:, 0, 0] = torch.cos(pred_R).clone()
+        rot_mat[:, 0, 1] = -torch.sin(pred_R).clone()
+        rot_mat[:, 1, 0] = torch.sin(pred_R).clone()
+        rot_mat[:, 1, 1] = torch.cos(pred_R).clone()
+
+        pred_motion = torch.bmm(rot_mat, state[:, -1, :n_p].transpose(1, 2)).transpose(1, 2) + pred_t[:, None, :]
 
         # rigid motion
         # if self.rigid_predictor is not None and self.rigid_out_dim == 7:
@@ -614,13 +597,15 @@ class DynamicsPredictor(nn.Module):
         # if self.rigid_predictor is not None and self.rigid_out_dim == 3:
         #     pred_motion[rigid_part] = rigid_motion[rigid_part]
 
-        pred_motion = non_rigid_motion
+        # pred_motion = non_rigid_motion
 
-        if self.state_normalize:  # denormalize
-            pred_motion = pred_motion * std_d + mean_d
-        pred_pos = state[:, -1, :n_p] + torch.clamp(pred_motion, max=self.motion_clamp, min=-self.motion_clamp)
-        if self.model_config['verbose']:
-            print('pred_pos', pred_pos.size())
+        # if self.state_normalize:  # denormalize
+        #     raise NotImplementedError
+        #     pred_motion = pred_motion * std_d + mean_d
+        # # pred_pos = state[:, -1, :n_p] + torch.clamp(pred_motion, max=self.motion_clamp, min=-self.motion_clamp)
+        pred_pos = torch.clamp(pred_motion, max=self.motion_clamp, min=-self.motion_clamp)
+        # if self.model_config['verbose']:
+        #     print('pred_pos', pred_pos.size())
 
         # pred_pos (denormalized): B x n_p x state_dim
         # pred_motion (denormalized): B x n_p x state_dim
@@ -633,7 +618,7 @@ class DynamicsPredictor(nn.Module):
         # pred_pos_ume = orig_pos.bmm(R_pred.transpose(1, 2)) + t_pred
         # assert torch.allclose(pred_pos[:, :20], pred_pos_ume[:, :20], atol=1e-5), f"umeyama algorithm failed, max diff: {torch.max(torch.abs(pred_pos[:, :20] - pred_pos_ume[:, :20]))}"
 
-        return pred_pos, pred_motion
+        return pred_pos, (pred_R, pred_t)
 
 
 class Model(nn.Module):

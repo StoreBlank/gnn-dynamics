@@ -130,12 +130,25 @@ class DynamicsPredictor(nn.Module):
                 if param['use']:
                     material_dim_list[i] += 1
 
-        input_dim = model_config['n_his'] * model_config['state_dim'] + \
-                    model_config['n_his'] * model_config['offset_dim'] + \
-                    model_config['attr_dim'] + \
-                    model_config['action_dim'] + \
-                    model_config['density_dim'] + \
-                    material_dim_list[0]
+        if self.num_materials > 1:
+            input_dim = model_config['n_his'] * model_config['state_dim'] + \
+                        model_config['n_his'] * model_config['offset_dim'] + \
+                        model_config['attr_dim'] + \
+                        model_config['action_dim'] + \
+                        model_config['density_dim'] + \
+                        self.num_materials + self.nf_physics
+            
+            # PhysicsEncoder
+            self.physics_encoders = nn.ModuleList(
+                [Encoder(material_dim_list[i], model_config['nf_physics_hidden'], self.nf_physics) for i in range(self.num_materials)])
+        
+        else:
+            input_dim = model_config['n_his'] * model_config['state_dim'] + \
+                        model_config['n_his'] * model_config['offset_dim'] + \
+                        model_config['attr_dim'] + \
+                        model_config['action_dim'] + \
+                        model_config['density_dim'] + \
+                        material_dim_list[0]
 
         self.particle_encoder = Encoder(input_dim, self.nf_particle, self.nf_effect)
 
@@ -143,11 +156,18 @@ class DynamicsPredictor(nn.Module):
         if model_config['rel_particle_dim'] == -1:
             model_config['rel_particle_dim'] = input_dim
 
+        # rel_input_dim = args.rel_particle_dim * 2 + args.rel_attr_dim * 2 + args.rel_can_attr_dim \
+        #         + args.rel_group_dim + args.n_his * args.rel_distance_dim + args.rel_density_dim \
+        #         + args.rel_canonical_distance_dim + args.rel_canonical_attr_dim
+
         rel_input_dim = model_config['rel_particle_dim'] * 2 + \
                         model_config['rel_attr_dim'] * 2 + \
                         model_config['rel_group_dim'] + \
                         model_config['rel_distance_dim'] * model_config['n_his'] + \
-                        model_config['rel_density_dim']
+                        model_config['rel_density_dim'] # + \
+                        # model_config['rel_can_attr_dim'] + \
+                        # model_config['rel_canonical_distance_dim'] + \
+                        # model_config['rel_canonical_attr_dim']
         self.relation_encoder = Encoder(rel_input_dim, self.nf_relation, self.nf_effect)
 
         # ParticlePropagator
@@ -155,12 +175,40 @@ class DynamicsPredictor(nn.Module):
 
         # RelationPropagator
         self.relation_propagator = Propagator(self.nf_effect * 3, self.nf_effect)
+        # NOTE: dyn-res-manip adds a particle density to the relation propagator, 
+        # which I think is unnecessary since the density is already included in the particle encoder.
 
-        self.rigid_predictor = ParticlePredictor(self.nf_effect, self.nf_effect, 3)  # 2 for translation, 1 for rotation
+        # ParticlePredictor
+        # self.non_rigid_out_dim = kwargs["non_rigid_out_dim"]
+        # self.rigid_out_dim = kwargs["rigid_out_dim"]
+        # if kwargs["predict_non_rigid"]:
+        #     self.non_rigid_predictor = ParticlePredictor(self.nf_effect, self.nf_effect, kwargs["non_rigid_out_dim"])
+        # else:
+        #     self.non_rigid_predictor = None
+        # if kwargs["predict_rigid"]:
+        #     self.rigid_predictor = ParticlePredictor(self.nf_effect, self.nf_effect, kwargs["rigid_out_dim"])
+        # else:
+        #     self.rigid_predictor = None
+
+        self.non_rigid_predictor = ParticlePredictor(self.nf_effect, self.nf_effect, 2)
+        # self.rigid_predictor = None
         
         if model_config['verbose']:
             print("DynamicsPredictor initialized")
             print("particle input dim: {}, relation input dim: {}".format(input_dim, rel_input_dim))
+            # print("non-rigid output dim: {}, rigid output dim: {}".format(kwargs["non_rigid_out_dim"], kwargs["rigid_out_dim"]))
+    
+    # def vae_loss(self, *_):
+    #     assert self.args.use_vae
+    #     assert self.physics_param_mean is not None
+    #     assert self.physics_param_logvar is not None
+
+    #     mu = self.physics_param_mean
+    #     log_var = self.physics_param_logvar
+
+    #     # KL divergence
+    #     kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim = 1), dim = 0)
+    #     return kld_loss
 
     # @profile
     def forward(self, state, attrs, Rr, Rs, p_instance, 

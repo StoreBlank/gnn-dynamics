@@ -87,10 +87,12 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
         phys_param = np.array([
             # properties['particle_radius'],
             # properties['num_particles'],
-            properties['length'],
-            properties['thickness'],
-            properties['dynamic_friction'],
-            properties['cluster_spacing']
+            # properties['length'],
+            # properties['thickness'],
+            # properties['dynamic_friction'],
+            # properties['cluster_spacing'],
+            # properties['global_stiffness'],
+            properties['stiffness'],
         ]).astype(np.float32)
         phys_params.append(phys_param)
         
@@ -204,9 +206,9 @@ def extract_eef_points(data_dir):
         np.save(os.path.join(data_dir, f"episode_{epi_idx}/processed_eef_states.npy"), processed_eef_states)
         
 if __name__ == "__main__":
-    data_name = "rope_stiff"
+    data_name = "rope"
     data_dir_list = [
-        f"/mnt/nvme1n1p1/baoyu/data/{data_name}"
+        f"/mnt/nvme1n1p1/baoyu/data_simple/{data_name}"
         # f"/mnt/sda/data/{data_name}"
     ]
     save_dir_list = [

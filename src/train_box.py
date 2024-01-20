@@ -153,16 +153,16 @@ def train(config):
                         # gt_mask = future_mask[:, fi].clone() # (B,)
                         
                         # construct edges/relations
-                        data['Rr'], data['Rs'] = construct_relations(data['state'], state_mask, tool_mask,
+                        data['Rr'], data['Rs'] = construct_relations(data['state'].clone(), state_mask, tool_mask,
                                             adj_thresh_range=dataset_config['datasets'][0]['adj_radius_range'],
-                                            pushing_direction=data['pushing_direction'])
+                                            pushing_direction=None)
+                                            # pushing_direction=data['pushing_direction'])
                         # print(f"Rr: {data['Rr'].shape}, Rs: {data['Rs'].shape}")
                         # print(f"number of states: {data['state_future'].shape}")
                         
                         # predict state
                         pred_state, pred_motion = model(**data)
                         pred_state_p = pred_state[:, :gt_state.shape[1], :3].clone()
-                        
                         loss = [weight * func(pred_state_p, gt_state) for func, weight in loss_funcs]
                         loss_sum += sum(loss)
                         
@@ -194,7 +194,7 @@ def train(config):
                 if phase == 'valid':
                     loss_plot_list_valid.append(np.mean(loss_sum_list))
         
-        if ((epoch + 1) < 100 and (epoch + 1) % 10 == 0) or (epoch + 1) % 100 == 0:
+        if ((epoch + 1) < 10) or ((epoch + 1) < 100 and (epoch + 1) % 10 == 0) or (epoch + 1) % 100 == 0:
             torch.save(model.state_dict(), os.path.join(train_config['out_dir'], 'checkpoints', f'model_{(epoch + 1)}.pth'))
             torch.save(optimizer.state_dict(), os.path.join(train_config['out_dir'], 'checkpoints', f'optim_{(epoch + 1)}.pth'))
         torch.save(model.state_dict(), os.path.join(train_config['out_dir'], 'checkpoints', f'latest.pth'))

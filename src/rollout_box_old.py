@@ -30,7 +30,7 @@ def draw_points(img, points, point_size=5, point_color=(0,0,255)):
 
 # used for pymunk and pygame coordinate conversion
 def convert_coordinates(point, screen_height=720):
-    return np.array([point[0] * 100., screen_height - point[1] * 100.])
+        return np.array([point[0], screen_height - point[1]])
 
 # component functions for rollout
 def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
@@ -38,10 +38,7 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
         max_nobj,
         colormap=None, point_size=4, edge_size=1, line_size=2, line_alpha=0.5, t_line=5,
         gt_lineset=None, pred_lineset=None, 
-        pred_kp_proj_last=None, gt_kp_proj_last=None, com=None):
-    
-    kp_vis_orig = kp_vis.copy()
-    gt_kp_vis_orig = gt_kp_vis.copy()
+        pred_kp_proj_last=None, gt_kp_proj_last=None):
     
     if colormap is None:
         colormap = rgb_colormap(repeat=100)
@@ -91,13 +88,6 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
     tool_kp_vis = convert_coordinates(tool_kp_vis).reshape((1,2))
     img = draw_points(img, tool_kp_vis, point_size=point_size, point_color=(0, 255, 0)) # green
     tool_kp_proj = tool_kp_vis
-
-    com_x = com[0]
-    com_y = com[1]
-    com_real = kp_vis_orig[3] + (kp_vis_orig[2] - kp_vis_orig[3]) * (com_x + 0.5) \
-                              + (kp_vis_orig[0] - kp_vis_orig[3]) * (com_y + 0.5)
-    com_vis = convert_coordinates(com_real).reshape((1,2))
-    img = draw_points(img, com_vis, point_size=point_size, point_color=(0, 255, 0)) # green
 
     # visualize lineset
     pred_kp_last = pred_kp_proj_last[0]
@@ -162,13 +152,6 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
     tool_kp_vis = convert_coordinates(tool_kp_vis).reshape((1,2))
     img = draw_points(img, tool_kp_vis, point_size=point_size, point_color=(0, 255, 0)) # green
     tool_kp_proj = tool_kp_vis
-
-    com_x = com[0]
-    com_y = com[1]
-    com_real = gt_kp_vis_orig[3] + (gt_kp_vis_orig[2] - gt_kp_vis_orig[3]) * (com_x + 0.5) \
-                                 + (gt_kp_vis_orig[0] - gt_kp_vis_orig[3]) * (com_y + 0.5)
-    com_vis = convert_coordinates(com_real).reshape((1,2))
-    img = draw_points(img, com_vis, point_size=point_size, point_color=(0, 255, 0)) # blue
 
     # visualize lineset
     try:
@@ -298,7 +281,7 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
     states_delta[max_nobj : max_nobj + tool_kp_num] = tool_kp[1] - tool_kp[0]
 
     # new: get pushing direction
-    # pushing_direction = states_delta[max_nobj]  # (3,)
+    pushing_direction = states_delta[max_nobj]  # (3,)
 
     # get masks
     state_mask = np.zeros((max_nobj + max_ntool * max_tool), dtype=bool)
@@ -312,63 +295,53 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
     tool_mask[max_nobj : max_nobj + tool_kp_num] = True # dynamic tool
 
     # construct instance information
-    # p_rigid = np.zeros(max_n, dtype=np.float32)  # clothes are nonrigid
-    # p_instance = np.zeros((max_nobj, max_n), dtype=np.float32)
-    # j_perm = np.random.permutation(instance_num)
-    # ptcl_cnt = 0
-    # # sanity check
-    # assert sum([len(fps_idx_list[j]) for j in range(len(fps_idx_list))]) == obj_kp_num
-    # # fill in p_instance
-    # for j in range(instance_num):
-    #     p_instance[ptcl_cnt:ptcl_cnt + len(fps_idx_list[j_perm[j]]), j_perm[j]] = 1
-    #     ptcl_cnt += len(fps_idx_list[j_perm[j]])
-
-    assert len(physics_param.keys()) == 1, 'only support single material'
-    assert list(physics_param.keys())[0] == 'rigid', 'only support rigid material'
-
-    physics_param['rigid'] -= 0.5  # in center frame
+    p_rigid = np.zeros(max_n, dtype=np.float32)  # clothes are nonrigid
+    p_instance = np.zeros((max_nobj, max_n), dtype=np.float32)
+    j_perm = np.random.permutation(instance_num)
+    ptcl_cnt = 0
+    # sanity check
+    assert sum([len(fps_idx_list[j]) for j in range(len(fps_idx_list))]) == obj_kp_num
+    # fill in p_instance
+    for j in range(instance_num):
+        p_instance[ptcl_cnt:ptcl_cnt + len(fps_idx_list[j_perm[j]]), j_perm[j]] = 1
+        ptcl_cnt += len(fps_idx_list[j_perm[j]])
 
     # construct physics information
-    # for material_name in dataset['materials']:
-    #     if material_name not in physics_param.keys():
-    #         raise ValueError(f'Physics parameter {material_name} not found in {dataset["data_dir"]}')
+    for material_name in dataset['materials']:
+        if material_name not in physics_param.keys():
+            raise ValueError(f'Physics parameter {material_name} not found in {dataset["data_dir"]}')
         # physics_param[material_name] += np.random.uniform(-phys_noise, phys_noise, 
         #         size=physics_param[material_name].shape)
 
     # new: construct physics information for each particle
-    # material_idx = np.zeros((max_nobj, len(material_config['material_index'])), dtype=np.int32)
-    # assert len(dataset['materials']) == 1, 'only support single material'
-    # material_idx[:obj_kp_num, material_config['material_index'][dataset['materials'][0]]] = 1
+    material_idx = np.zeros((max_nobj, len(material_config['material_index'])), dtype=np.int32)
+    assert len(dataset['materials']) == 1, 'only support single material'
+    material_idx[:obj_kp_num, material_config['material_index'][dataset['materials'][0]]] = 1
 
     # construct attributes
-    attr_dim = 5
+    attr_dim = 2
     attrs = np.zeros((max_nobj + max_ntool * max_tool, attr_dim), dtype=np.float32)
-    assert obj_kp_num == 4
-    attrs[0, 0] = 1.
-    attrs[1, 1] = 1.
-    attrs[2, 2] = 1.
-    attrs[3, 3] = 1.
-    attrs[max_nobj : max_nobj + tool_kp_num, 4] = 1
+    attrs[:obj_kp_num, 0] = 1.
+    attrs[max_nobj : max_nobj + tool_kp_num, 1] = 1
 
     # numpy to torch
     state_history = torch.from_numpy(state_history).float()
     states_delta = torch.from_numpy(states_delta).float()
     attrs = torch.from_numpy(attrs).float()
-    # p_rigid = torch.from_numpy(p_rigid).float()
-    # p_instance = torch.from_numpy(p_instance).float()
+    p_rigid = torch.from_numpy(p_rigid).float()
+    p_instance = torch.from_numpy(p_instance).float()
     physics_param = {k: torch.from_numpy(v).float() for k, v in physics_param.items()}
-    # material_idx = torch.from_numpy(material_idx).long()
+    material_idx = torch.from_numpy(material_idx).long()
     state_mask = torch.from_numpy(state_mask)
     tool_mask = torch.from_numpy(tool_mask)
     obj_mask = torch.from_numpy(obj_mask)
     tool_kp = torch.from_numpy(tool_kp).float()
-    # pushing_direction = torch.from_numpy(pushing_direction).float()
+    pushing_direction = torch.from_numpy(pushing_direction).float()
 
     # construct relations (density as hyperparameter)
-    Rr, Rs = construct_edges_from_states(state_history[-1][None].clone(), adj_thresh, 
+    Rr, Rs = construct_edges_from_states(state_history[-1][None], adj_thresh, 
                 mask=state_mask[None], tool_mask=tool_mask[None], no_self_edge=True, 
-                pushing_direction=None)
-                # pushing_direction=pushing_direction[None])
+                pushing_direction=pushing_direction[None])
     # print(f"Rr: {Rr.shape}, Rs: {Rs.shape}")
     Rr = Rr[0].numpy()
     Rs = Rs[0].numpy()
@@ -389,14 +362,14 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
 
         # attr information
         "attrs": attrs,  # (N+M, attr_dim)
-        # "p_rigid": p_rigid,  # (n_instance,)
-        # "p_instance": p_instance,  # (N, n_instance)
+        "p_rigid": p_rigid,  # (n_instance,)
+        "p_instance": p_instance,  # (N, n_instance)
         # "physics_param": physics_param,  # (N, phys_dim)
         "state_mask": state_mask,  # (N+M,)
         "tool_mask": tool_mask,  # (N+M,)
         "obj_mask": obj_mask,  # (N,)
 
-        # "material_index": material_idx,  # (N, num_materials)
+        "material_index": material_idx,  # (N, num_materials)
 
         # for non-model use
         "tool_kp": tool_kp,  # (2, max_ntool * max_tool, 3)
@@ -461,12 +434,11 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
         Rs = graph['Rs'].numpy()
         tool_kp = graph['tool_kp'].numpy() # (2, tool_kp_num, 3)
         kp_vis = graph['state'][-1, :obj_kp_num].numpy()
-        com = graph['rigid_physics_param'].numpy()
         # print('kp_vis', kp_vis.shape)
         # print(f'obj_kp_num: {obj_kp_num}, tool_kp_num: {tool_kp_num}')
         pred_kp_proj_last, gt_kp_proj_last, gt_lineset, pred_lineset = \
             visualize_graph(dataset['data_dir'], episode_idx, current_start, current_end, 0, save_dir,
-            kp_vis.copy(), kp_vis.copy(), tool_kp, Rr, Rs, max_nobj, com=com)
+            kp_vis, kp_vis, tool_kp, Rr, Rs, max_nobj)
 
     graph = {key: graph[key].unsqueeze(0).to(device) for key in graph.keys()}
 
@@ -487,7 +459,6 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
             adj_thresh = 0
 
             graph = truncate_graph(graph)
-            # import ipdb; ipdb.set_trace()
             pred_state, pred_motion = model(**graph)
             pred_state = pred_state.detach().cpu().numpy()
 
@@ -541,13 +512,13 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
 
             assert states.shape[1] == max_nobj + max_ntool * max_tool
             assert states.shape[0] == 1
-            Rr, Rs = construct_edges_from_states(torch.tensor(states.copy(), device=device), adj_thresh, 
+            Rr, Rs = construct_edges_from_states(torch.tensor(states), adj_thresh, 
                                                 mask=graph['state_mask'], 
                                                 tool_mask=graph['tool_mask'],
                                                 no_self_edge=True,
                                                 pushing_direction=pushing_direction)
-            Rr = Rr[0].detach().cpu().numpy()
-            Rs = Rs[0].detach().cpu().numpy()
+            Rr = Rr[0].numpy()
+            Rs = Rs[0].numpy()
             Rr = pad(Rr, max_nR)
             Rs = pad(Rs, max_nR)
             Rr = torch.from_numpy(Rr).float()
@@ -564,13 +535,13 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
                 "Rs": Rs.unsqueeze(0).to(device),  # (n_rel, N+M)
                 
                 "attrs": graph["attrs"],  # (N+M, attr_dim)
-                # "p_rigid": graph["p_rigid"],  # (n_instance,)
-                # "p_instance": graph["p_instance"],  # (N, n_instance)
+                "p_rigid": graph["p_rigid"],  # (n_instance,)
+                "p_instance": graph["p_instance"],  # (N, n_instance)
                 # "physics_param": graph["physics_param"],
                 "obj_mask": graph["obj_mask"],  # (N,)
                 "tool_mask": graph["tool_mask"],  # (N+M,)
                 "state_mask": graph["state_mask"],  # (N+M,)
-                # "material_index": graph["material_index"],  # (N, num_materials)
+                "material_index": graph["material_index"],  # (N, num_materials)
             }
             for name in graph.keys():
                 if name.endswith('_physics_param'):
@@ -580,12 +551,11 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
 
             # visualize
             if vis:
-                com = graph['rigid_physics_param'][0].detach().cpu().numpy()
                 pred_kp_proj_last, gt_kp_proj_last, gt_lineset, pred_lineset = \
                     visualize_graph(dataset['data_dir'], episode_idx, current_start, current_end, i, save_dir,
-                    obj_kp_vis.copy(), gt_kp_vis.copy(), tool_kp_vis.copy(), Rr, Rs, max_nobj,
+                    obj_kp_vis, gt_kp_vis, tool_kp_vis, Rr, Rs, max_nobj,
                     gt_lineset=gt_lineset, pred_lineset=pred_lineset,
-                    pred_kp_proj_last=pred_kp_proj_last, gt_kp_proj_last=gt_kp_proj_last, com=com)
+                    pred_kp_proj_last=pred_kp_proj_last, gt_kp_proj_last=gt_kp_proj_last)
 
     return error_list
 
@@ -701,8 +671,8 @@ def rollout_dataset(model, device, dataset, material_config, save_dir):
         tool_states = np.load(os.path.join(data_dir, f"episode_{episode_idx:03d}/eef_states.npy")).reshape((num_frames, 1, 2))
         # print(f'episode {episode_idx:03d}: particle: {particles_pos.shape}, tool:{tool_states.shape}')
         # particles: (50, 4, 2), tool: (50, 2)
-        all_particles_pos.append(particles_pos / 100.0) # convert to decimeter
-        all_tool_states.append(tool_states / 100.0) # convert to decimeter
+        all_particles_pos.append(particles_pos) 
+        all_tool_states.append(tool_states)
 
     total_error_long = []
     total_error_short = []

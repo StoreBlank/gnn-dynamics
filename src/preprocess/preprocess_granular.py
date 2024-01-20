@@ -89,10 +89,12 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
             # properties['particle_radius'],
             # properties['num_particles'],
             properties['granular_scale'],
-            # properties['num_granular'],
+            properties['num_granular'],
             # properties['distribution_r'],
-            properties['dynamic_friction'],
-            properties['granular_mass']
+            # properties['dynamic_friction'],
+            # properties['granular_mass'],
+            # properties['area'],
+            # properties['sz_ratio'],
         ]).astype(np.float32)
         phys_params.append(phys_param)
         
@@ -218,12 +220,12 @@ def extract_eef_points(data_dir):
 if __name__ == "__main__":
     data_name = "carrots"
     data_dir_list = [
-        f"/mnt/nvme1n1p1/baoyu/data/{data_name}"
+        f"/mnt/nvme1n1p1/baoyu/data_simple/{data_name}"
     ]
     save_dir_list = [
-        f"/mnt/nvme1n1p1/baoyu/preprocess_010/{data_name}"
+        f"/mnt/nvme1n1p1/baoyu/preprocess_020/{data_name}"
     ]
-    dist_thresh = 0.10 #(0.5cm, 1.0cm, 2.5cm)
+    dist_thresh = 0.2 #(0.5cm, 1.0cm, 2.5cm)
     n_his = 4
     n_future = 3
     
