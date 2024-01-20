@@ -525,7 +525,9 @@ class DynamicsPredictor(nn.Module):
         rot_mat[:, 1, 0] = torch.sin(pred_R).clone()
         rot_mat[:, 1, 1] = torch.cos(pred_R).clone()
 
-        pred_motion = torch.bmm(rot_mat, state[:, -1, :n_p].transpose(1, 2)).transpose(1, 2) + pred_t[:, None, :]
+        state_p_mean = state[:, -1, :n_p].mean(1)  # (B, 2)
+        state_p = state[:, -1, :n_p] - state_p_mean[:, None]  # (B, n_p, 2)
+        pred_motion = torch.bmm(rot_mat, state_p.transpose(1, 2)).transpose(1, 2) + pred_t[:, None, :] + state_p_mean[:, None]
 
         # rigid motion
         # if self.rigid_predictor is not None and self.rigid_out_dim == 7:

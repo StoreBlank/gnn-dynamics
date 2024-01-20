@@ -398,17 +398,17 @@ class DynDataset(Dataset):
         # state_history += np.random.uniform(-state_noise, state_noise, size=state_history.shape)
         
         # TODO: rotation randomness
-        random_rot = np.random.uniform(-np.pi, np.pi)
-        rot_mat = np.array([[np.cos(random_rot), -np.sin(random_rot)],
-                            [np.sin(random_rot), np.cos(random_rot)]], dtype=state_history.dtype)
-        # rot_mat = np.array([[np.cos(random_rot), -np.sin(random_rot), 0],
-        #                     [np.sin(random_rot), np.cos(random_rot), 0],
-        #                    [0, 0, 1]], dtype=state_history.dtype) # 2D rotation matrix in xy plane
-        state_history = state_history @ rot_mat[None]
-        states_delta = states_delta @ rot_mat
-        tool_future = tool_future @ rot_mat[None]
-        states_delta_future = states_delta_future @ rot_mat[None]
-        obj_kp_future = obj_kp_future @ rot_mat[None]
+        # random_rot = np.random.uniform(-np.pi, np.pi)
+        # rot_mat = np.array([[np.cos(random_rot), -np.sin(random_rot)],
+        #                     [np.sin(random_rot), np.cos(random_rot)]], dtype=state_history.dtype)
+        # # rot_mat = np.array([[np.cos(random_rot), -np.sin(random_rot), 0],
+        # #                     [np.sin(random_rot), np.cos(random_rot), 0],
+        # #                    [0, 0, 1]], dtype=state_history.dtype) # 2D rotation matrix in xy plane
+        # state_history = state_history @ rot_mat[None]
+        # states_delta = states_delta @ rot_mat
+        # tool_future = tool_future @ rot_mat[None]
+        # states_delta_future = states_delta_future @ rot_mat[None]
+        # obj_kp_future = obj_kp_future @ rot_mat[None]
         
         # translation randomness
         # random_translation = np.random.uniform(-1, 1, size=2)
