@@ -326,8 +326,6 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
     assert len(physics_param.keys()) == 1, 'only support single material'
     assert list(physics_param.keys())[0] == 'rigid', 'only support rigid material'
 
-    physics_param['rigid'] -= 0.5  # in center frame
-
     # construct physics information
     # for material_name in dataset['materials']:
     #     if material_name not in physics_param.keys():

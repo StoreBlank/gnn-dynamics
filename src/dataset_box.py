@@ -362,7 +362,6 @@ class DynDataset(Dataset):
         assert len(physics_param.keys()) == 1, 'only support single material'
         assert list(physics_param.keys())[0] == 'rigid', 'only support rigid material'
 
-        physics_param['rigid'] -= 0.5  # in center frame
         # physics_param['rigid'][0] *= (87.2755 + 82.2278) / 100. # in decimeter
         # physics_param['rigid'][1] *= (44.4932 + 44.4954) / 100. # in decimeter
 
