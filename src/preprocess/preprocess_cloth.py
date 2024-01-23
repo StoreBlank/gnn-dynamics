@@ -104,7 +104,8 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
         for fj in range(num_frames):
             curr_step = None
             for si in range(len(steps) - 1):
-                if fj >= steps[si] and fj <= steps[si + 1] - 2:
+                # start 2 frames: grasping process is not valid
+                if fj >= steps[si] + 2 and fj <= steps[si + 1] - 2:
                     curr_step = si
                     break
             else:
@@ -112,7 +113,7 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
             assert curr_step is not None
         
             curr_frame = fj
-            start_frame = steps[curr_step]
+            start_frame = steps[curr_step] + 2
             end_frame = steps[curr_step + 1] - 2
             
             # search backward (n_his)
@@ -196,8 +197,9 @@ def extract_eef_points(data_dir):
         assert eef_states.shape[0] == num_frames
         
         # extract eef points
-        processed_eef_states = np.zeros((num_frames, n_eef_points, 3))
+        processed_eef_states = np.zeros((num_frames, 1, 3))
         for frame_idx in range(num_frames):
+            processed_eef_pos_frame = []
             for j in range(n_eef_points):
                 eef_state = eef_states[frame_idx, j]
                 eef_pos_0 = eef_state[0:3]
@@ -205,7 +207,10 @@ def extract_eef_points(data_dir):
                 eef_rot = quaternion_to_rotation_matrix(eef_quat)
 
                 eef_pos = eef_pos_0 + np.dot(eef_rot, eef_point_pos[j])
-                processed_eef_states[frame_idx, j] = eef_pos
+                processed_eef_pos_frame.append(eef_pos)
+            # extract the middle point of right fingers and left fingers
+            middle_point = (processed_eef_pos_frame[0] + processed_eef_pos_frame[1]) / 2
+            processed_eef_states[frame_idx, 0] = middle_point
             
         # save the processed eef states
         np.save(os.path.join(data_dir, f"episode_{epi_idx}/processed_eef_states.npy"), processed_eef_states)

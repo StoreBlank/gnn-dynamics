@@ -87,7 +87,7 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
     # print(f'n_rels: {n_rels}') # (64)
     # print(n_rels.shape, (mask * 1.0).sum(-1).mean().item(), n_rels.mean().item())
     n_rel = n_rels.max().long().item()
-    # print(f'n_rel: {n_rel}') # 410
+    # print('relation num:', n_rel)
     
     rels_idx = []
     rels_idx = [torch.arange(n_rels[i]) for i in range(B)]

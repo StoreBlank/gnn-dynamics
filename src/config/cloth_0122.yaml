@@ -1,6 +1,6 @@
 train_config:
   # out_dir: "/mnt/sda/logs/rope"
-  out_dir: "/mnt/nvme1n1p1/baoyu/logs/cloth_0122_dense"
+  out_dir: "/mnt/nvme1n1p1/baoyu/logs/cloth_0122_2"
   phases: ["train", "valid"]
   load_model: False
   model_checkpoint: "/mnt/sda/logs/rope/checkpoints/latest.pth"
