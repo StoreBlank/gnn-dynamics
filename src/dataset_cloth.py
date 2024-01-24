@@ -49,8 +49,8 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
     tool_mask_12 = tool_mask_1 * tool_mask_2
     dis[tool_mask_12] = 1e10  # avoid tool to tool relations
     
-    # obj_tool_mask_1 = tool_mask_1 * mask_2  # particle sender, tool receiver
-    # obj_tool_mask_2 = tool_mask_2 * mask_1  # particle receiver, tool sender
+    obj_tool_mask_1 = tool_mask_1 * mask_2  # particle sender, tool receiver
+    obj_tool_mask_2 = tool_mask_2 * mask_1  # particle receiver, tool sender
 
     # obj_tool_mask = -1. * obj_tool_mask_1 + 1. * obj_tool_mask_2
 
@@ -76,12 +76,19 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
         adj_matrix = adj_matrix * (1 - self_edge_mask)
 
     # add topk constraints
-    topk = 20 #TODO: hyperparameter
+    topk = 5 #TODO: hyperparameter
     topk_idx = torch.topk(dis, k=topk, dim=-1, largest=False)[1]
     topk_matrix = torch.zeros_like(adj_matrix)
     topk_matrix.scatter_(-1, topk_idx, 1)
     adj_matrix = adj_matrix * topk_matrix
     # print(f'adj_matrix shape: {adj_matrix.shape}') # (64, 300, 300)
+    
+    # connect eef to all obj particles
+    adj_matrix[obj_tool_mask_1] = 0
+    adj_matrix[obj_tool_mask_2] = 1
+    # adj_matrix[:, -1, :] = 1
+    # adj_matrix[:, :, -1] = 1
+    adj_matrix[:, -1, -1] = 0 # avoid tool self edge
     
     n_rels = adj_matrix.sum(dim=(1,2))
     # print(f'n_rels: {n_rels}') # (64)

@@ -19,7 +19,7 @@ import cv2
 import glob
 from dgl.geometry import farthest_point_sampler
 
-from dataset import construct_edges_from_states, load_dataset
+from dataset_cloth import construct_edges_from_states, load_dataset
 from utils import rgb_colormap, fps_rad_idx, pad, vis_points, moviepy_merge_video
 from train import truncate_graph
 
@@ -97,12 +97,13 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
             if Rr[k].sum() == 0: continue
             receiver = Rr[k].argmax()
             sender = Rs[k].argmax()
-            if receiver >= max_nobj:  # tool
+            
+            if receiver >= max_nobj:  # obj-tool
                 cv2.line(img, 
                     (int(tool_kp_proj[receiver - max_nobj, 0]), int(tool_kp_proj[receiver - max_nobj, 1])), 
                     (int(obj_kp_proj[sender, 0]), int(obj_kp_proj[sender, 1])), 
                     (0, 0, 255), edge_size)
-            elif sender >= max_nobj:  # tool
+            elif sender >= max_nobj:  # tool-obj
                 cv2.line(img, 
                     (int(tool_kp_proj[sender - max_nobj, 0]), int(tool_kp_proj[sender - max_nobj, 1])), 
                     (int(obj_kp_proj[receiver, 0]), int(obj_kp_proj[receiver, 1])), 
@@ -145,6 +146,7 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
             if Rr[k].sum() == 0: continue
             receiver = Rr[k].argmax()
             sender = Rs[k].argmax()
+            
             if receiver >= max_nobj:  # tool
                 cv2.line(img, 
                     (int(tool_kp_proj[receiver - max_nobj, 0]), int(tool_kp_proj[receiver - max_nobj, 1])), 

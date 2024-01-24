@@ -14,7 +14,12 @@ def extract_physics_params(data_dir):
 
     for epi_idx in range(num_episodes):
         box_com = np.load(os.path.join(data_dir, f"episode_{epi_idx:03d}/box_com.npy")) # box_size, box_com
+        box_size = box_com[0]
         com = box_com[1]
+        # normalize com to (-1, 1)
+        com[0] = com[0] / (box_size[0] / 2)
+        com[1] = com[1] / (box_size[1] / 2)
+
         property_params = {
             'com_x': com[0],
             'com_y': com[1],
@@ -53,7 +58,6 @@ def extract_box_points(data_dir):
             
             for j in range(num_box_points):
                 point = box_points_in_box[j]
-                # TODO
                 point_rotated_x = point[0] * np.cos(box_rad) - point[1] * np.sin(box_rad)
                 point_rotated_y = point[0] * np.sin(box_rad) + point[1] * np.cos(box_rad)
                 point_rotated = np.array([point_rotated_x, point_rotated_y])
@@ -90,10 +94,13 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
         assert num_frames == box_states.shape[0] == eef_states.shape[0]
         print(f"Processing episode {epi_idx:03d}, num_frames: {num_frames}")
         
-        # load physics parameters: center of mass (com)
-        box_com = np.load(os.path.join(data_dir, f"episode_{epi_idx:03d}/box_com.npy")) # box_size, box_com
-        com = box_com[1]
-        phys_param = np.array([com[0], com[1]]).astype(np.float32)
+        physics_path = os.path.join(data_dir, f"episode_{epi_idx:03d}/property_params.json")
+        with open(physics_path, "r") as f:
+            properties = json.load(f)
+        phys_param = np.array([
+            properties['com_x'],
+            properties['com_y'],
+        ]).astype(np.float32)
         phys_params.append(phys_param)
         
         # get start-end pairs
@@ -161,7 +168,7 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
     
 
 if __name__ == "__main__":
-    data_name = "box"
+    data_name = "box_shape"
     data_dir_list = [
         f"/mnt/nvme1n1p1/baoyu/data/{data_name}"
     ]
@@ -175,15 +182,15 @@ if __name__ == "__main__":
     for data_dir, save_dir in zip(data_dir_list, save_dir_list):
         if os.path.isdir(data_dir):
             os.makedirs(save_dir, exist_ok=True)
+            print("================extract_physics_params================")
+            extract_physics_params(data_dir)
+            print("======================================================")
             print("================extract_pushes================")
             extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
             print("==============================================")
             print("================extract_box_points================")
             extract_box_points(data_dir)
             print("==================================================")
-            print("================extract_physics_params================")
-            extract_physics_params(data_dir)
-            print("======================================================")
         os.makedirs(save_dir, exist_ok=True)
         with open(os.path.join(save_dir, 'metadata.txt'), 'w') as f:
             f.write(f'{dist_thresh},{n_future},{n_his}')

@@ -1,21 +1,20 @@
 train_config:
-  # out_dir: "/mnt/sda/logs/rope"
-  out_dir: "/mnt/nvme1n1p1/baoyu/logs/cloth_0122_3"
+  out_dir: "/mnt/nvme1n1p1/baoyu/logs/box_shape"
   phases: ["train", "valid"]
   load_model: False
-  model_checkpoint: "/mnt/sda/logs/rope/checkpoints/latest.pth"
-  optimizer_checkpoint: "/mnt/sda/logs/rope/checkpoints/latest_optim.pth"
-  device: "cuda:1"
+  model_checkpoint: "/mnt/nvme1n1p1/baoyu/checkpoints/latest.pth"
+  optimizer_checkpoint: "/mnt/nvme1n1p1/baoyu/checkpoints/latest_optim.pth"
+  device: "cuda"
   
   batch_size: 128
-  n_epochs: 500
+  n_epochs: 100
   n_iters_per_epoch:
     train: 1000
     valid: 100
   log_interval: 50
   random_seed: 42
   n_his: 4
-  n_future: 3
+  n_future: 5
 
 model_config:
   verbose: False
@@ -28,19 +27,19 @@ model_config:
   nf_physics: 10
 
   # particle encoder
-  attr_dim: 2  # object and end effector
+  attr_dim: 5  # object and end effector
   state_dim: 0  # x, y, z
   offset_dim: 0
-  action_dim: 3
+  action_dim: 4  # dx, dy, com_x, com_y
   pstep: 3
   sequence_length: 4
   density_dim: 0  # particle density
 
   # rel encoder
   rel_particle_dim: 0
-  rel_attr_dim: 2
-  rel_group_dim: 1  # sum of difference of group one-hot vector
-  rel_distance_dim: 3
+  rel_attr_dim: 5
+  rel_group_dim: 0  # sum of difference of group one-hot vector
+  rel_distance_dim: 2
   rel_density_dim: 0
 
   # canonical
@@ -55,14 +54,14 @@ model_config:
 
 dataset_config:
   datasets:
-    - name: "cloth"
-      materials: ["cloth"]
-      data_dir: "/mnt/nvme1n1p1/baoyu/data/cloth"
-      prep_data_dir: "/mnt/nvme1n1p1/baoyu/preprocess_010/cloth"
-      fps_radius_range: [0.29, 0.31] 
-      adj_radius_range: [0.74, 0.76]
+    - name: "rigid"
+      materials: ["rigid"]
+      data_dir: "/mnt/nvme1n1p1/baoyu/data/box"
+      prep_data_dir: "/mnt/nvme1n1p1/baoyu/preprocess_010_fu5/box"
+      fps_radius_range: [0,0] #TODO: not used
+      adj_radius_range: [0,0] #TODO: not used
       state_noise: 
-        train: 0.075
+        train: 0.0 # +-0.02rad # TODO: 4 4mm
         valid: 0.0
       phys_noise: 
         train: 0.0
@@ -72,17 +71,20 @@ dataset_config:
         valid: [0.9, 1]
       max_n: 1
       max_tool: 1
-      max_nobj: 100
+      max_nobj: 4
       max_ntool: 1
-      max_nR: 2000
+      max_nR: 50
 
 material_config:
   material_index:
-    cloth: 0
-  cloth:
+    rigid: 0
+  rigid:
     physics_params: 
-      - name: "sf"
+      - name: "com_x"
         use: True
-        min: 0.
-        max: 1.
-     
+        min: 0.0
+        max: 1.0
+      - name: "com_y"
+        use: True
+        min: 0.0
+        max: 1.0
