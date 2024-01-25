@@ -1,0 +1,113 @@
+train_config:
+  # out_dir: "/mnt/sda/logs/granular"
+  out_dir: "/mnt/nvme1n1p1/baoyu/logs/granular_flat"
+  phases: ["train", "valid"]
+  load_model: False
+  model_checkpoint: "/mnt/nvme1n1p1/baoyu/checkpoints/latest.pth"
+  optimizer_checkpoint: "/mnt/nvme1n1p1/baoyu/checkpoints/latest_optim.pth"
+  device: "cuda:1"
+  
+  batch_size: 128
+  n_epochs: 100
+  n_iters_per_epoch:
+    train: 1000
+    valid: 100
+  log_interval: 50
+  random_seed: 42
+  n_his: 4
+  n_future: 3
+
+model_config:
+  verbose: False
+
+  nf_particle: 150
+  nf_relation: 150
+  nf_effect: 150
+
+  nf_physics_hidden: 20
+  nf_physics: 10
+
+  # particle encoder
+  attr_dim: 2  # object and end effector
+  state_dim: 0  # x, y, z
+  offset_dim: 0
+  action_dim: 3
+  pstep: 3
+  sequence_length: 4
+  density_dim: 0  # particle density
+
+  # rel encoder
+  rel_particle_dim: 0
+  rel_attr_dim: 2
+  rel_group_dim: 1  # sum of difference of group one-hot vector
+  rel_distance_dim: 3
+  rel_density_dim: 0
+
+  # canonical
+  # rel_can_attr_dim: 0
+  # rel_canonical_distance_dim: 0
+  # rel_canonical_attr_dim: 0
+  # rel_canonical_thresh: 0
+
+  # phys encoding
+  use_vae: False
+  phys_encode: False
+
+dataset_config:
+  datasets:
+    - name: "granular"
+      materials: ["granular"]
+      # data_dir: "/mnt/sda/data/carrots"
+      # prep_data_dir: "/mnt/sda/preprocess/carrots"
+      data_dir: "/mnt/nvme1n1p1/baoyu/data/carrots_flat"
+      prep_data_dir: "/mnt/nvme1n1p1/baoyu/preprocess_010/carrots_flat"
+      fps_radius_range: [0.18, 0.22]
+      adj_radius_range: [0.38, 0.42]
+      state_noise: 
+        train: 0.04
+        valid: 0.0
+      phys_noise: 
+        train: 0.0
+        valid: 0.0
+      ratio: 
+        train: [0, 0.9]
+        valid: [0.9, 1]
+      max_n: 1
+      max_tool: 1
+      max_nobj: 100
+      max_ntool: 5
+      max_nR: 1500
+
+material_config:
+  material_index:
+    granular: 0
+  granular:
+    physics_params: 
+      - name: "particle_radius"
+        use: False
+        min: 0.
+        max: 1.
+      - name: "num_particles"
+        use: False
+        min: 0.
+        max: 5000.
+      - name: "granular_scale"
+        use: True
+        min: 0.1
+        max: 0.3
+      - name: "num_granular"
+        use: False
+        min: 9
+        max: 645
+      - name: "distribution_r"
+        use: False
+        min: 0.1
+        max: 0.3
+      - name: "dynamic_friction"
+        use: False
+        min: 0.2
+        max: 0.9
+      - name: "granular_mass"
+        use: False
+        min: 0.01
+        max: 0.1

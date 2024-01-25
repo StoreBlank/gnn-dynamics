@@ -8,33 +8,6 @@ import torch
 from dgl.geometry import farthest_point_sampler
 from utils import quaternion_to_rotation_matrix, fps_rad_idx, pad
 
-def extract_kp(data_dir, episode_idx, start_frame, end_frame):
-    # obtain object keypoints
-    obj_ptcl = np.load(os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy"))
-    obj_ptcl_start, obj_ptcl_end = obj_ptcl[start_frame], obj_ptcl[end_frame]
-    obj_kp = np.stack([obj_ptcl_start, obj_ptcl_end], axis=0)
-    
-    # obtain tool keypoints
-    tool_ptcl = np.load(os.path.join(data_dir, f"episode_{episode_idx}/processed_eef_states.npy"))
-    tool_ptcl_start, tool_ptcl_end = tool_ptcl[start_frame], tool_ptcl[end_frame]
-    tool_kp = np.stack([tool_ptcl_start, tool_ptcl_end], axis=0)
-    
-    return obj_kp, tool_kp
-
-def extract_kp_single_frame(data_dir, episode_idx, frame_idx):
-    # obtain object keypoints
-    obj_ptcls = np.load(os.path.join(data_dir, f"episode_{episode_idx}/particles_pos.npy"))
-    # print(f"epi_idx {episode_idx}, frame_idx {frame_idx}, obj_ptcls: {obj_ptcls.shape}")
-    obj_ptcl = obj_ptcls[frame_idx]
-    obj_kp = np.array([obj_ptcl])
-    
-    # obtain tool keypoints
-    tool_ptcl = np.load(os.path.join(data_dir, f"episode_{episode_idx}/processed_eef_states.npy"))
-    tool_kp = tool_ptcl[frame_idx]
-    tool_kp = np.array(tool_kp)
-    
-    return obj_kp, tool_kp
-
 """
 Preprocess data to save the following:
     - frame_pairs: a directory containing the start-end frame pairs for each push.
@@ -89,7 +62,7 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
             # properties['particle_radius'],
             # properties['num_particles'],
             properties['granular_scale'],
-            properties['num_granular'],
+            # properties['num_granular'],
             # properties['distribution_r'],
             # properties['dynamic_friction'],
             # properties['granular_mass'],
@@ -218,14 +191,14 @@ def extract_eef_points(data_dir):
         np.save(os.path.join(data_dir, f"episode_{epi_idx}/processed_eef_states.npy"), processed_eef_states)
 
 if __name__ == "__main__":
-    data_name = "carrots"
+    data_name = "carrots_flat"
     data_dir_list = [
-        f"/mnt/nvme1n1p1/baoyu/data_simple/{data_name}"
+        f"/mnt/nvme1n1p1/baoyu/data/{data_name}"
     ]
     save_dir_list = [
-        f"/mnt/nvme1n1p1/baoyu/preprocess_020/{data_name}"
+        f"/mnt/nvme1n1p1/baoyu/preprocess_010/{data_name}"
     ]
-    dist_thresh = 0.2 #(0.5cm, 1.0cm, 2.5cm)
+    dist_thresh = 0.10 #(0.5cm, 1.0cm, 2.5cm)
     n_his = 4
     n_future = 3
     
