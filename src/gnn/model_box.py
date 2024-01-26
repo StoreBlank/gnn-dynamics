@@ -221,11 +221,15 @@ class DynamicsPredictor(nn.Module):
 
         # TODO
         physics_param = kwargs['rigid_physics_param']
-        com_x = physics_param[:, 0:1]  # (B, 2)
-        com_y = physics_param[:, 1:2]  # (B, 2)
-        kps = state_cur_norm[:, 0]  # (B, 5, 2)
-        com_real = kps[:, 3] + (kps[:, 2] - kps[:, 3]) * (com_x + 0.5) \
-                             + (kps[:, 0] - kps[:, 3]) * (com_y + 0.5)  # (B, 2)
+        kps = state_cur_norm[:, 0] # (B, 5, 2)
+        used_physics = False
+        if physics_param.shape[-1] != 0:
+            # print("physics_param", physics_param.size())
+            com_x = physics_param[:, 0:1]  # (B, 2)
+            com_y = physics_param[:, 1:2]  # (B, 2)
+            com_real = kps[:, 3] + (kps[:, 2] - kps[:, 3]) * (com_x + 0.5) \
+                                + (kps[:, 0] - kps[:, 3]) * (com_y + 0.5)  # (B, 2)
+            used_physics = True
 
         # p_inputs: B x N x attr_dim
         p_inputs = attrs
@@ -361,7 +365,10 @@ class DynamicsPredictor(nn.Module):
             # p_inputs: B x N x (... + action_dim)
             p_inputs = torch.cat([p_inputs, action], 2)
 
-            act_com_diff = kps - com_real[:, None]  # (B, 5, 2)
+            if used_physics:
+                act_com_diff = kps - com_real[:, None]  # (B, 5, 2)
+            else:
+                act_com_diff = kps
             p_inputs = torch.cat([p_inputs, act_com_diff], 2)
 
         if self.model_config['density_dim'] > 0:
