@@ -1,11 +1,11 @@
 train_config:
-  # out_dir: "/mnt/sda/logs/rope"
-  out_dir: "/mnt/nvme1n1p1/baoyu/logs/rope_0119_e200"
+  # out_dir: "/mnt/sda/logs/granular"
+  out_dir: "/mnt/nvme1n1p1/baoyu/logs/granular_0119_1d_no_physics"
   phases: ["train", "valid"]
-  load_model: True
-  model_checkpoint: "/mnt/nvme1n1p1/baoyu/logs/rope_0119/checkpoints/model_100.pth"
-  optimizer_checkpoint: "/mnt/nvme1n1p1/baoyu/logs/rope_0119/checkpoints/optim_100.pth"
-  device: "cuda:1"
+  load_model: False
+  model_checkpoint: "/mnt/nvme1n1p1/baoyu/checkpoints/latest.pth"
+  optimizer_checkpoint: "/mnt/nvme1n1p1/baoyu/checkpoints/latest_optim.pth"
+  device: "cuda"
   
   batch_size: 128
   n_epochs: 100
@@ -55,16 +55,16 @@ model_config:
 
 dataset_config:
   datasets:
-    - name: "rope"
-      materials: ["rope"]
-      # data_dir: "/mnt/sda/data/rope"
-      # prep_data_dir: "/mnt/sda/preprocess/rope"
-      data_dir: "/mnt/nvme1n1p1/baoyu/data_simple/rope"
-      prep_data_dir: "/mnt/nvme1n1p1/baoyu/preprocess_010/rope"
+    - name: "granular"
+      materials: ["granular"]
+      # data_dir: "/mnt/sda/data/carrots"
+      # prep_data_dir: "/mnt/sda/preprocess/carrots"
+      data_dir: "/mnt/nvme1n1p1/baoyu/data_simple/carrots"
+      prep_data_dir: "/mnt/nvme1n1p1/baoyu/preprocess_020/carrots"
       fps_radius_range: [0.18, 0.22]
-      adj_radius_range: [0.48, 0.52]
+      adj_radius_range: [0.28, 0.32]
       state_noise: 
-        train: 0.05
+        train: 0.04
         valid: 0.0
       phys_noise: 
         train: 0.0
@@ -75,13 +75,13 @@ dataset_config:
       max_n: 1
       max_tool: 1
       max_nobj: 100
-      max_ntool: 1
-      max_nR: 2000
+      max_ntool: 5
+      max_nR: 1500
 
 material_config:
   material_index:
-    rope: 0
-  rope:
+    granular: 0
+  granular:
     physics_params: 
       - name: "particle_radius"
         use: False
@@ -91,19 +91,23 @@ material_config:
         use: False
         min: 0.
         max: 5000.
-      - name: "length"
-        use: False
-        min: 2.5
-        max: 5.0
-      - name: "thickness"
-        use: False
-        min: 2.5
-        max: 4.0
-      - name: "dynamic_friction"
+      - name: "granular_scale"
         use: False
         min: 0.1
-        max: 0.45
-      - name: "stiffness"
-        use: True
-        min: 0.
-        max: 1.
+        max: 0.3
+      - name: "num_granular"
+        use: False
+        min: 9
+        max: 645
+      - name: "distribution_r"
+        use: False
+        min: 0.1
+        max: 0.3
+      - name: "dynamic_friction"
+        use: False
+        min: 0.2
+        max: 0.9
+      - name: "granular_mass"
+        use: False
+        min: 0.01
+        max: 0.1

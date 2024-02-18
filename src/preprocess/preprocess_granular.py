@@ -191,9 +191,9 @@ def extract_eef_points(data_dir):
         np.save(os.path.join(data_dir, f"episode_{epi_idx}/processed_eef_states.npy"), processed_eef_states)
 
 if __name__ == "__main__":
-    data_name = "carrots_flat"
+    data_name = "data_simple/carrots_mixed_1"
     data_dir_list = [
-        f"/mnt/nvme1n1p1/baoyu/data/{data_name}"
+        f"/mnt/nvme1n1p1/baoyu/{data_name}"
     ]
     save_dir_list = [
         f"/mnt/nvme1n1p1/baoyu/preprocess_010/{data_name}"

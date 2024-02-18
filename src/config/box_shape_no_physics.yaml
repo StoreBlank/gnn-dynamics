@@ -1,5 +1,5 @@
 train_config:
-  out_dir: "/mnt/nvme1n1p1/baoyu/logs/box_shape_0125"
+  out_dir: "/mnt/nvme1n1p1/baoyu/logs/box_shape_0125_no_physics"
   phases: ["train", "valid"]
   load_model: False
   model_checkpoint: "/mnt/nvme1n1p1/baoyu/checkpoints/latest.pth"
@@ -81,10 +81,10 @@ material_config:
   rigid:
     physics_params: 
       - name: "com_x"
-        use: True
+        use: False
         min: 0.0
         max: 2.0
       - name: "com_y"
-        use: True
+        use: False
         min: 0.0
         max: 2.0

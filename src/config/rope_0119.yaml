@@ -1,8 +1,8 @@
 train_config:
   # out_dir: "/mnt/sda/logs/rope"
-  out_dir: "/mnt/nvme1n1p1/baoyu/logs/rope_0119_e200"
+  out_dir: "/mnt/nvme1n1p1/baoyu/logs/rope_0119"
   phases: ["train", "valid"]
-  load_model: True
+  load_model: False
   model_checkpoint: "/mnt/nvme1n1p1/baoyu/logs/rope_0119/checkpoints/model_100.pth"
   optimizer_checkpoint: "/mnt/nvme1n1p1/baoyu/logs/rope_0119/checkpoints/optim_100.pth"
   device: "cuda:1"

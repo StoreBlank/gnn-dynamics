@@ -51,6 +51,8 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
     
     obj_tool_mask_1 = tool_mask_1 * mask_2  # particle sender, tool receiver
     obj_tool_mask_2 = tool_mask_2 * mask_1  # particle receiver, tool sender
+    
+    obj_pad_tool_mask_1 = tool_mask_1 * (~tool_mask_2)
 
     # obj_tool_mask = -1. * obj_tool_mask_1 + 1. * obj_tool_mask_2
 
@@ -84,7 +86,8 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
     # print(f'adj_matrix shape: {adj_matrix.shape}') # (64, 300, 300)
     
     # connect eef to all obj particles
-    batch_mask = (adj_matrix[obj_tool_mask_1].reshape(B, -1).sum(-1) > 0)[:, None, None].repeat(1, N, N)
+    # batch_mask = (adj_matrix[obj_pad_tool_mask_1].reshape(B, -1).sum(-1) > 0)[:, None, None].repeat(1, N, N)
+    batch_mask = torch.ones((B, N, N), device=states.device, dtype=bool)
     batch_obj_tool_mask_1 = obj_tool_mask_1 * batch_mask  # (B, N, N)
     neg_batch_obj_tool_mask_1 = obj_tool_mask_1 * (~batch_mask)  # (B, N, N)
     batch_obj_tool_mask_2 = obj_tool_mask_2 * batch_mask  # (B, N, N)
@@ -163,7 +166,8 @@ def load_dataset(dataset, material_config, phase='train'):
                 if item['name'] in properties.keys() and item['use']:
                     range_min = item['min']
                     range_max = item['max']
-                    used_params.append((properties[item['name']] - range_min) / (range_max - range_min + 1e-6))
+                    # used_params.append((properties[item['name']] - range_min) / (range_max - range_min + 1e-6))
+                    used_params.append(0.5)
             
             used_params = np.array(used_params).astype(np.float32)
             # used_params = used_params * 2. - 1. #TODO: normalize to [-1, 1]

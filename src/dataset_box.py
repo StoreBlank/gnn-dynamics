@@ -154,8 +154,9 @@ def load_dataset(dataset, material_config, phase='train'):
                 if item['name'] in properties.keys() and item['use']:
                     range_min = item['min']
                     range_max = item['max']
-                    used_params.append((properties[item['name']] - range_min) / (range_max - range_min + 1e-6))
-            
+                    # used_params.append((properties[item['name']] - range_min) / (range_max - range_min + 1e-6))
+                    used_params.append(0.0)
+                    
             used_params = np.array(used_params).astype(np.float32)
             # used_params = used_params * 2. - 1. #TODO: normalize to [-1, 1]
             physics_params_episode[material_name] = used_params

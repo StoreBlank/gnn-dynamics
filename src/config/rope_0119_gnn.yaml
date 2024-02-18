@@ -1,10 +1,10 @@
 train_config:
   # out_dir: "/mnt/sda/logs/rope"
-  out_dir: "/mnt/nvme1n1p1/baoyu/logs/rope_0119_e200"
+  out_dir: "/mnt/nvme1n1p1/baoyu/logs/rope_0119_no_physics_e200"
   phases: ["train", "valid"]
   load_model: True
-  model_checkpoint: "/mnt/nvme1n1p1/baoyu/logs/rope_0119/checkpoints/model_100.pth"
-  optimizer_checkpoint: "/mnt/nvme1n1p1/baoyu/logs/rope_0119/checkpoints/optim_100.pth"
+  model_checkpoint: "/mnt/nvme1n1p1/baoyu/logs/rope_0119_no_physics/checkpoints/model_100.pth"
+  optimizer_checkpoint: "/mnt/nvme1n1p1/baoyu/logs/rope_0119_no_physics/checkpoints/optim_100.pth"
   device: "cuda:1"
   
   batch_size: 128
@@ -104,6 +104,6 @@ material_config:
         min: 0.1
         max: 0.45
       - name: "stiffness"
-        use: True
+        use: False
         min: 0.
         max: 1.

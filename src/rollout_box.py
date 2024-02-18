@@ -438,6 +438,16 @@ def get_next_pair_or_break_episode_pushes(pairs, n_his, n_frames, current_end):
     next_pair = valid_pairs[int(len(valid_pairs)/2)]  # pick the middle one
     return next_pair
 
+def chamfer(x, y):
+    assert len(x.shape) == len(y.shape) == 2
+    assert x.shape[1] == y.shape[1] == 2
+    x = x[None]  # (1, N, D)
+    y = y[:, None]  # (M, 1, D)
+    dis = np.linalg.norm(x - y, 2, axis=-1)  # (M, N)
+    dis_xy = np.mean(dis.min(axis=1))  # dis_xy: mean over N
+    dis_yx = np.mean(dis.min(axis=0))  # dis_yx: mean over M
+    return dis_xy + dis_yx
+
 
 def rollout_from_start_graph(graph, model, material_config, device, dataset, episode_idx, current_start, current_end, 
         get_next_pair_or_break_func, fps_idx_list, pairs, save_dir, all_particles_pos, all_tool_states):
@@ -453,7 +463,7 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
     max_nobj = dataset['max_nobj']
     max_ntool = dataset['max_ntool']
 
-    vis = True
+    vis = False
     if vis:
         Rr = graph['Rr'].numpy()
         Rs = graph['Rs'].numpy()
@@ -471,6 +481,7 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
     # iterative rollout
     rollout_steps = 100
     error_list = []
+    error_baseline_list = []
     idx_list = [[current_start, current_end]]
     with torch.no_grad():
         for i in range(1, 1 + rollout_steps):
@@ -492,8 +503,8 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
             # prepare gt
             # gt_state, _ = extract_kp_single_frame(dataset["data_dir"], episode_idx, current_end)
             # gt_state = [gt_state]
-            gt_state = all_particles_pos[episode_idx][current_end][None] # (1, num_obj_points, 3)
-            gt_state = [gt_state[j][fps_idx] for j, fps_idx in enumerate(fps_idx_list)]
+            gt_state_all = all_particles_pos[episode_idx][current_end][None] # (1, num_obj_points, 3)
+            gt_state = [gt_state_all[j][fps_idx] for j, fps_idx in enumerate(fps_idx_list)]
             gt_state = np.concatenate(gt_state, axis=0)
             gt_state = pad(gt_state, max_nobj)
 
@@ -504,10 +515,18 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
             # fps for visualization
             obj_kp_vis = obj_kp[:obj_kp_num]
             gt_kp_vis = gt_kp[:obj_kp_num]
-
+            
             # calculate error
-            error = np.linalg.norm(gt_kp - obj_kp, axis=1).mean()
-            error_list.append(error)
+            # TODO chamfer
+            use_chamfer = True
+            if use_chamfer:
+                error = chamfer(obj_kp, gt_state_all[0]).mean()
+                error_baseline = chamfer(gt_kp, gt_state_all[0]).mean()
+                error_list.append(error)
+                error_baseline_list.append(error_baseline)
+            else:
+                error = np.linalg.norm(gt_kp - obj_kp, axis=1).mean()
+                error_list.append(error)
 
             next_pair = get_next_pair_or_break_func(pairs, n_his, n_frames, current_end)
             if next_pair is None:
@@ -585,10 +604,10 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
                     gt_lineset=gt_lineset, pred_lineset=pred_lineset,
                     pred_kp_proj_last=pred_kp_proj_last, gt_kp_proj_last=gt_kp_proj_last, com=com)
 
-    return error_list
+    return error_list, error_baseline_list
 
 
-def rollout_episode(model, device, dataset, material_config, pairs, episode_idx, physics_param, save_dir, all_particles_pos, all_tool_states):
+def rollout_episode(model, device, dataset, material_config, pairs, episode_idx, physics_param, save_dir, all_particles_pos, all_tool_states, vis=False):
     n_his = model.model_config['n_his']
 
     # state_noise = 0.0
@@ -602,7 +621,7 @@ def rollout_episode(model, device, dataset, material_config, pairs, episode_idx,
 
     graph, fps_idx_list = construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_config, all_particles_pos, all_tool_states)
     
-    error_list = rollout_from_start_graph(graph, model, material_config, device, dataset, episode_idx, start, end, 
+    error_list, error_baseline_list = rollout_from_start_graph(graph, model, material_config, device, dataset, episode_idx, start, end, 
             get_next_pair_or_break_episode, fps_idx_list, pairs, save_dir, all_particles_pos, all_tool_states)
 
     # plot error
@@ -617,21 +636,25 @@ def rollout_episode(model, device, dataset, material_config, pairs, episode_idx,
     error_list = np.array(error_list)
     np.savetxt(os.path.join(save_dir, f'error.txt'), error_list)
     
-    # vis
+    if len(error_baseline_list) > 0:
+        error_baseline_list = np.array(error_baseline_list)
+        np.savetxt(os.path.join(save_dir, f'error_baseline.txt'), error_baseline_list)
     
-    img_path = os.path.join(save_dir, f"images")
-    fps = 10
-    pred_out_path = os.path.join(img_path, "pred.mp4")
-    moviepy_merge_video(img_path, 'pred', pred_out_path, fps)
-    gt_out_path = os.path.join(img_path, "gt.mp4")
-    moviepy_merge_video(img_path, 'gt', gt_out_path, fps)
-    both_out_path = os.path.join(img_path, "both.mp4")
-    moviepy_merge_video(img_path, 'both', both_out_path, fps)
+    # vis
+    if vis:
+        img_path = os.path.join(save_dir, f"images")
+        fps = 10
+        pred_out_path = os.path.join(img_path, "pred.mp4")
+        moviepy_merge_video(img_path, 'pred', pred_out_path, fps)
+        gt_out_path = os.path.join(img_path, "gt.mp4")
+        moviepy_merge_video(img_path, 'gt', gt_out_path, fps)
+        both_out_path = os.path.join(img_path, "both.mp4")
+        moviepy_merge_video(img_path, 'both', both_out_path, fps)
 
     return error_list
 
 
-def rollout_episode_pushes(model, device, dataset, material_config, pairs, episode_idx, physics_param, save_dir, all_particles_pos, all_tool_states):
+def rollout_episode_pushes(model, device, dataset, material_config, pairs, episode_idx, physics_param, save_dir, all_particles_pos, all_tool_states, vis=False):
     n_his = model.model_config['n_his']
 
     # state_noise = 0.0
@@ -654,7 +677,7 @@ def rollout_episode_pushes(model, device, dataset, material_config, pairs, episo
 
     graph, fps_idx_list = construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_config, all_particles_pos, all_tool_states)
     
-    error_list = rollout_from_start_graph(graph, model, material_config, device, dataset, episode_idx, start, end, 
+    error_list, error_baseline_list = rollout_from_start_graph(graph, model, material_config, device, dataset, episode_idx, start, end, 
             get_next_pair_or_break_episode_pushes, fps_idx_list, pairs, save_dir, all_particles_pos, all_tool_states)
     
     error_list_pushes.append(error_list)
@@ -670,16 +693,21 @@ def rollout_episode_pushes(model, device, dataset, material_config, pairs, episo
 
     error_list = np.array(error_list)
     np.savetxt(os.path.join(save_dir, f'error.txt'), error_list)
+    
+    if len(error_baseline_list) > 0:
+            error_baseline_list = np.array(error_baseline_list)
+            np.savetxt(os.path.join(save_dir, f'error_baseline.txt'), error_baseline_list)
 
     # vis
-    img_path = os.path.join(save_dir, f"images")
-    fps = 10
-    pred_out_path = os.path.join(img_path, "pred.mp4")
-    moviepy_merge_video(img_path, 'pred', pred_out_path, fps)
-    gt_out_path = os.path.join(img_path, "gt.mp4")
-    moviepy_merge_video(img_path, 'gt', gt_out_path, fps)
-    both_out_path = os.path.join(img_path, "both.mp4")
-    moviepy_merge_video(img_path, 'both', both_out_path, fps)
+    if vis:
+        img_path = os.path.join(save_dir, f"images")
+        fps = 10
+        pred_out_path = os.path.join(img_path, "pred.mp4")
+        moviepy_merge_video(img_path, 'pred', pred_out_path, fps)
+        gt_out_path = os.path.join(img_path, "gt.mp4")
+        moviepy_merge_video(img_path, 'gt', gt_out_path, fps)
+        both_out_path = os.path.join(img_path, "both.mp4")
+        moviepy_merge_video(img_path, 'both', both_out_path, fps)
         
     return error_list_pushes
 
