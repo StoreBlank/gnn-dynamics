@@ -193,10 +193,12 @@ def extract_eef_points(data_dir):
 if __name__ == "__main__":
     data_name = "data_simple/carrots_mixed_1"
     data_dir_list = [
-        f"/mnt/nvme1n1p1/baoyu/{data_name}"
+        # f"/mnt/nvme1n1p1/baoyu/{data_name}"
+        f"/mnt/sda/data/granular/carrots"
     ]
     save_dir_list = [
-        f"/mnt/nvme1n1p1/baoyu/preprocess_010/{data_name}"
+        # f"/mnt/nvme1n1p1/baoyu/preprocess_010/{data_name}"
+        f"/mnt/sda/adaptigraph/preprocess_010/granular_0404"
     ]
     dist_thresh = 0.10 #(0.5cm, 1.0cm, 2.5cm)
     n_his = 4

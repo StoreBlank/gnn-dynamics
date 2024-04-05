@@ -89,7 +89,7 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
             # properties['num_particles'],
             # properties['length'],
             # properties['thickness'],
-            # properties['dynamic_friction'],
+            properties['dynamic_friction'],
             # properties['cluster_spacing'],
             # properties['global_stiffness'],
             properties['stiffness'],
@@ -208,12 +208,12 @@ def extract_eef_points(data_dir):
 if __name__ == "__main__":
     data_name = "rope"
     data_dir_list = [
-        f"/mnt/nvme1n1p1/baoyu/data_simple/{data_name}"
-        # f"/mnt/sda/data/{data_name}"
+        # f"/mnt/nvme1n1p1/baoyu/data_simple/{data_name}"
+        f"/mnt/sda/data/{data_name}"
     ]
     save_dir_list = [
-        f"/mnt/nvme1n1p1/baoyu/preprocess_010/{data_name}"
-        # f"/mnt/sda/preprocess/{data_name}"
+        # f"/mnt/nvme1n1p1/baoyu/preprocess_010/{data_name}"
+        f"/mnt/sda/adaptigraph/preprocess_010/{data_name}_0402"
     ]
     dist_thresh = 0.10 #(1.0cm, 2.5cm)
     n_his = 4

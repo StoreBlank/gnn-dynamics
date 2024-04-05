@@ -782,5 +782,6 @@ if __name__ == "__main__":
     with open(args.config, 'r') as f:
         config = yaml.load(f, Loader=yaml.CLoader)
 
-    out_dir_root = f"/mnt/nvme1n1p1/baoyu/vis"
+    # out_dir_root = f"/mnt/nvme1n1p1/baoyu/vis"
+    out_dir_root = f"/mnt/sda/adaptigraph/vis"
     rollout(args, config, out_dir_root)
