@@ -2,27 +2,6 @@ import os
 import shutil
 import random
 
-# def mix_two_folders(folder_path_1, folder_path_2, new_folder_path, episode_num):
-#     if not os.path.exists(new_folder_path):
-#         os.mkdir(new_folder_path)
-    
-#     # rename folders in folder_path_2
-#     for i in range(episode_num):
-#         old_name = os.path.join(folder_path_2, f"episode_{i}")
-#         new_name = os.path.join(folder_path_2, f"episode_{i+episode_num}")
-#         os.rename(old_name, new_name)
-    
-#     # move subfolders from folder_path_1 and folder_path_2 to new_folder_path
-#     for folder in [folder_path_1, folder_path_2]:
-#         for subfolder in os.listdir(folder):
-#             shutil.move(os.path.join(folder, subfolder), new_folder_path)
-    
-#     # shuffle the subfolders in new_folder_path
-#     subfolders = os.listdir(new_folder_path)
-#     random.shuffle(subfolders)
-    
-#     # Apply the new order by renaming the subfolders
-
 def mixed_two_folders(folder_path_1, folder_path_2, new_folder_path):
     if not os.path.exists(new_folder_path):
         os.mkdir(new_folder_path)
