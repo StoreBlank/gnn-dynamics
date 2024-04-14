@@ -16,9 +16,9 @@ import torchvision.transforms as transforms
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from gnn.model import DynamicsPredictor
+from gnn.model_all import DynamicsPredictor
 from gnn.utils import set_seed, umeyama_algorithm
-from dataset import DynDataset, construct_edges_from_states
+from dataset_all import DynDataset, construct_edges_from_states
 
 def dataloader_wrapper(dataloader, name):
     cnt = 0
@@ -53,18 +53,22 @@ def truncate_graph(data):
     data['Rs'] = data['Rs'][:, :max_n, :]
     return data
 
-def construct_relations(states, state_mask, tool_mask, adj_thresh_range=[0.1, 0.2], max_nR=500, adjacency=None, pushing_direction=None):
+def construct_relations_mixed(states, state_mask, tool_mask, adj_thresh_ranges, material_types, pushing_direction=None):
     # construct relations (density as hyperparameter)
-    bsz = states.shape[0] # states: B, n_his, N, 3
-    adj_thresh = np.random.uniform(*adj_thresh_range, (bsz,))
+    adj_thresh_ranges = adj_thresh_ranges.cpu().numpy()
+    adj_thresh = []
+    for adj_thresh_range in adj_thresh_ranges:
+        adj_thresh.append(np.random.uniform(*adj_thresh_range))
+    adj_thresh = np.array(adj_thresh)
     
     Rr, Rs = construct_edges_from_states(states[:, -1], adj_thresh,
-                                         mask=state_mask, tool_mask=tool_mask, no_self_edge=True,
-                                         pushing_direction=pushing_direction)
+                                         mask=state_mask, tool_mask=tool_mask, 
+                                         material_types=material_types, 
+                                         no_self_edge=True,)
+    
     assert Rr[:, -1].sum() > 0
     Rr, Rs = Rr.detach(), Rs.detach()
     return Rr, Rs
-
 
 def train(config):
     train_config = config['train_config']
@@ -139,24 +143,35 @@ def train(config):
                     # future_mask = data['state_future_mask']  # (B, n_future)
                     future_tool = data['tool_future']  # (B, n_future-1, n_p+n_s, 3)
                     future_action = data['action_future']  # (B, n_future-1, n_p+n_s, 3)
-                    
                     # print(f"future_state: {future_state.shape}, future_mask: {future_mask.shape}")
                     # print(f"future_tool: {future_tool.shape}, future_action: {future_action.shape}")
                     
                     state_mask = data['state_mask']
                     tool_mask = data['tool_mask']
-                    
                     # print(f"state_mask: {state_mask.shape}, tool_mask: {tool_mask.shape}")
+                    
+                    material_encoding = data['material_encoding'] # (B, 3)
+                    material_idx = torch.where(material_encoding == 1)[1] #(B,)
+                    material_category = material_config['material_index'].keys()
+                    material_category = list(material_category)
+                        
+                    # Extract all material types corresponding to indices in material_idx
+                    material_types = [material_category[idx] for idx in material_idx]
+                    # Retrieve all ranges in one go (assumes that accessing via list of keys is supported; adapt if needed)
+                    adj_radius_ranges = [dataset_config['datasets']['material'][mt]['adj_radius_range'] for mt in material_types]
+                    # Convert list of ranges to tensor directly on the device
+                    adj_thresh_ranges = torch.tensor(adj_radius_ranges, device=device) # (B, 2)
                     
                     for fi in range(train_config['n_future']):
                         gt_state = future_state[:, fi].clone() # (B, n_p, 3)
                         # gt_mask = future_mask[:, fi].clone() # (B,)
                         
                         # construct edges/relations
-                        data['Rr'], data['Rs'] = construct_relations(data['state'], state_mask, tool_mask,
-                                            adj_thresh_range=dataset_config['datasets'][0]['adj_radius_range'],
+                        data['Rr'], data['Rs'] = construct_relations_mixed(data['state'], state_mask, tool_mask,
+                                            adj_thresh_ranges=adj_thresh_ranges,
+                                            material_types=material_types,
                                             pushing_direction=data['pushing_direction'])
-                        # print(f"Rr: {data['Rr'].shape}, Rs: {data['Rs'].shape}")
+                        # print(f"Rr: {data['Rr'].shape}, Rs: {data['Rs'].shape}") 
                         # print(f"number of states: {data['state_future'].shape}")
                         
                         # predict state
@@ -221,7 +236,7 @@ def train(config):
                         
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument('--config', type=str, default='config/debug.yaml')
+    arg_parser.add_argument('--config', type=str, default='config/all_0410.yaml')
     args = arg_parser.parse_args()
 
     with open(args.config, 'r') as f:

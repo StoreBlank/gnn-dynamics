@@ -178,6 +178,7 @@ class DynDataset(Dataset):
         self.materials = {}
 
         for i, dataset in enumerate(dataset_config['datasets']):
+            print(f'i: {i}')
             print(f'Setting up dataset {dataset["name"]} at {dataset["data_dir"]}')
             materials_list = dataset['materials']
             

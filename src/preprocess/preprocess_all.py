@@ -39,35 +39,48 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
         # load particle
         particles_pos = np.load(os.path.join(data_dir, f"episode_{epi_idx}/particles_pos.npy"))
         num_frames = particles_pos.shape[0]
-        # num_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/*_color.jpg"))))
         print(f"Processing episode {epi_idx}, num_frames: {num_frames}")
         
         # load info
         steps = np.load(os.path.join(data_dir, f"episode_{epi_idx}/steps.npy"))
+        # load material type txt file
+        with open(os.path.join(data_dir, f"episode_{epi_idx}/material.txt"), "r") as f:
+            material_type = f.read().strip()
         
+        # load eef states
         eef_states = np.load(os.path.join(data_dir, f"episode_{epi_idx}/eef_states.npy"))
         assert eef_states.shape[0] == num_frames
         
-        # only consider the left gripper for push extraction since the right gripper has the same transformation with it
         eef_pos = np.zeros((num_frames, 3))
         for i in range(num_frames):
-            eef_pos_0 = eef_states[i, 0, 0:3]
-            eef_quat = eef_states[i, 0, 6:10]
-            eef_rot = quaternion_to_rotation_matrix(eef_quat)
-            eef_pos[i] = eef_pos_0 + np.dot(eef_rot, np.array([0, 0, 1.25]))
+            if material_type == 'rope':
+                eef_pos_0 = eef_states[i, 0:3]
+                eef_quat = eef_states[i, 6:10]
+                eef_rot = quaternion_to_rotation_matrix(eef_quat)
+                eef_pos[i] = eef_pos_0 + np.dot(eef_rot, np.array([0, 0, 1.]))
+            elif material_type == 'cloth':
+                eef_pos_0 = eef_states[i, 0, 0:3]
+                eef_quat = eef_states[i, 0, 6:10]
+                eef_rot = quaternion_to_rotation_matrix(eef_quat)
+                eef_pos[i] = eef_pos_0 + np.dot(eef_rot, np.array([0, 0, 1.25]))
+            elif material_type == 'granular':
+                eef_pos_0 = eef_states[i, 0:3]
+                eef_quat = eef_states[i, 6:10]
+                eef_rot = quaternion_to_rotation_matrix(eef_quat)
+                eef_pos[i] = eef_pos_0 + np.dot(eef_rot, np.array([0, 0, 1.25]))
+            else:
+                raise ValueError(f"Unknown material type: {material_type}")
         
+        # TODO: load physics parameters
         physics_path = os.path.join(data_dir, f"episode_{epi_idx}/property_params.json")
         with open(physics_path, "r") as f:
             properties = json.load(f)
-        phys_param = np.array([
-            # properties["particle_radius"],
-            # properties["num_particles"],
-            # properties["stretch_stiffness"],
-            # properties["bend_stiffness"],
-            # properties["shear_stiffness"],
-            # properties["dynamic_friction"],
-            properties["sf"],
-        ]).astype(np.float32)
+        if material_type == 'rope':
+            phys_param = np.array([properties['stiffness'],]).astype(np.float32)
+        elif material_type == 'cloth':
+            phys_param = np.array([properties['sf'],]).astype(np.float32)
+        elif material_type == 'granular':
+            phys_param = np.array([properties['granular_scale'],]).astype(np.float32)
         phys_params.append(phys_param)
         
         # get start-end pairs
@@ -77,17 +90,21 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
         for fj in range(num_frames):
             curr_step = None
             for si in range(len(steps) - 1):
-                # start 2 frames: grasping process is not valid
-                if fj >= steps[si] + 2 and fj <= steps[si + 1] - 2:
+                if fj >= steps[si] and fj <= steps[si + 1] - 2:
                     curr_step = si
                     break
             else:
                 continue # this frame is not valid
             assert curr_step is not None
-        
-            curr_frame = fj
-            start_frame = steps[curr_step] + 2
-            end_frame = steps[curr_step + 1] - 2
+
+            if material_type == 'rope' or material_type == 'granular':
+                curr_frame = fj
+                start_frame = steps[curr_step]
+                end_frame = steps[curr_step + 1] - 2
+            elif material_type == 'cloth':
+                curr_frame = fj
+                start_frame = steps[curr_step] + 2 # start 2 frames: grasping process is not valid
+                end_frame = steps[curr_step + 1] - 2
             
             # search backward (n_his)
             eef_particles_curr = eef_pos[curr_frame]
@@ -146,57 +163,16 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
     phys_params_range = np.stack([phys_params_min, phys_params_max], axis=0)
     print(f"phys_params_range: {phys_params_range}")
     np.savetxt(os.path.join(save_dir, "phys_range.txt"), phys_params_range)
-    
-def extract_eef_points(data_dir):
-    # calculate the number of episodes folder in the data directory
-    num_episodes = len(list(glob.glob(os.path.join(data_dir, f"episode_*"))))
-    print(f"Preprocessing starts. Number of episodes: {num_episodes}")
-
-    eef_point_pos = np.array([
-        [0., -0.2, 0.5],
-        [0., 0.2, 0.5]
-    ])
-    n_eef_points = eef_point_pos.shape[0]
-    
-    for epi_idx in range(num_episodes):
-        # load particle
-        particles_pos = np.load(os.path.join(data_dir, f"episode_{epi_idx}/particles_pos.npy"))
-        num_frames = particles_pos.shape[0]
-        # num_frames = len(list(glob.glob(os.path.join(data_dir, f"episode_{epi_idx}/camera_0/*_color.jpg"))))
-        print(f"Processing episode {epi_idx}, num_frames: {num_frames}")
         
-        # load the eef states: (num_frames, 2, 14)
-        eef_states = np.load(os.path.join(data_dir, f"episode_{epi_idx}/eef_states.npy"))
-        assert eef_states.shape[0] == num_frames
-        
-        # extract eef points
-        processed_eef_states = np.zeros((num_frames, 1, 3))
-        for frame_idx in range(num_frames):
-            processed_eef_pos_frame = []
-            for j in range(n_eef_points):
-                eef_state = eef_states[frame_idx, j]
-                eef_pos_0 = eef_state[0:3]
-                eef_quat = eef_state[6:10]
-                eef_rot = quaternion_to_rotation_matrix(eef_quat)
-
-                eef_pos = eef_pos_0 + np.dot(eef_rot, eef_point_pos[j])
-                processed_eef_pos_frame.append(eef_pos)
-            # extract the middle point of right fingers and left fingers
-            middle_point = (processed_eef_pos_frame[0] + processed_eef_pos_frame[1]) / 2
-            processed_eef_states[frame_idx, 0] = middle_point
-            
-        # save the processed eef states
-        np.save(os.path.join(data_dir, f"episode_{epi_idx}/processed_eef_states.npy"), processed_eef_states)
-
 if __name__ == "__main__":
-    data_name = "cloth"
+    data_name = "mixed_subset"
     data_dir_list = [
-        f"/mnt/nvme1n1p1/baoyu/data/{data_name}"
+        f"/mnt/sda/data_simple/{data_name}"
     ]
     save_dir_list = [
-        f"/mnt/nvme1n1p1/baoyu/preprocess_010/{data_name}"
+        f"/mnt/sda/adaptigraph/preprocess_010/{data_name}_0411"
     ]
-    dist_thresh = 0.1 #(0.5cm, 1.0cm, 2.5cm)
+    dist_thresh = 0.10 #(1.0cm, 2.5cm)
     n_his = 4
     n_future = 3
     
@@ -205,9 +181,6 @@ if __name__ == "__main__":
             os.makedirs(save_dir, exist_ok=True)
             print("================extract_pushes================")
             extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future)
-            print("==============================================")
-            print("================extract eef================")
-            extract_eef_points(data_dir)
             print("==============================================")
         # save metadata
         os.makedirs(save_dir, exist_ok=True)

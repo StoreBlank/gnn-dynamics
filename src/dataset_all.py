@@ -9,13 +9,14 @@ from torch.utils.data import Dataset
 from dgl.geometry import farthest_point_sampler
 from utils import pad, pad_torch, fps_rad_idx
 
-def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edge=False, pushing_direction=None):  # helper function for construct_graph
+def construct_edges_from_states(states, adj_thresh, mask, tool_mask, material_types, no_self_edge=False):  # helper function for construct_graph
     '''
     # :param states: (B, N+2M, state_dim) torch tensor
     # :param adj_thresh: (B, ) torch tensor
     # :param mask: (B, N+2M) torch tensor, true when index is a valid particle
     # :param tool_mask: (B, N+2M) torch tensor, true when index is a valid tool particle
-    # :param pushing_direction: (B, 3) torch tensor, pushing direction for each eef particle
+    # :param material_type: (B, ), 'cloth' or 'rope' or 'granular'
+    # :param no_self_edge: bool, whether to remove self edge
     
     # :return:
     # - Rr: (B, n_rel, N) torch tensor
@@ -48,22 +49,6 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
     tool_mask_2 = tool_mask[:, None, :].repeat(1, N, 1)  # tool particle sender
     tool_mask_12 = tool_mask_1 * tool_mask_2
     dis[tool_mask_12] = 1e10  # avoid tool to tool relations
-    
-    # obj_tool_mask_1 = tool_mask_1 * mask_2  # particle sender, tool receiver
-    # obj_tool_mask_2 = tool_mask_2 * mask_1  # particle receiver, tool sender
-
-    # obj_tool_mask = -1. * obj_tool_mask_1 + 1. * obj_tool_mask_2
-
-    # pushing_direction = pushing_direction[:, None, None, :].repeat(1, N, N, 1)  # (B, N, N, 3)
-    # pushing_diff = pushing_direction * obj_tool_mask[:, :, :, None]  # (B, N, N, 3)
-    
-    # # make pushing_diff and s_diff have the same device
-    # pushing_diff = pushing_diff.to(device=states.device, dtype=states.dtype)
-    # s_diff = s_diff.to(device=states.device, dtype=states.dtype)
-
-    # pushing_mask = pushing_diff * s_diff  # (B, N, N, 3)
-    # pushing_mask = torch.sum(pushing_mask, -1) < 0  # (B, N, N)
-    # dis[pushing_mask] = 1e10  # avoid tool to obj relations in reverse pushing direction
 
     adj_matrix = ((dis - threshold[:, None, None]) < 0).to(torch.float32) # (B, N, N)
     # print(f'adj_matrix shape: {adj_matrix.shape}') # (64, 300, 300)
@@ -76,13 +61,35 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
         adj_matrix = adj_matrix * (1 - self_edge_mask)
 
     # add topk constraints
-    topk = 20 #TODO: hyperparameter
+    topk = 10 #TODO: hyperparameter
     topk_idx = torch.topk(dis, k=topk, dim=-1, largest=False)[1]
     topk_matrix = torch.zeros_like(adj_matrix)
     topk_matrix.scatter_(-1, topk_idx, 1)
     adj_matrix = adj_matrix * topk_matrix
-    # print(f'adj_matrix shape: {adj_matrix.shape}') # (64, 300, 300)
+    # print(f'adj_matrix shape: {adj_matrix.shape}') # (B, 300, 300)
     
+    # for cloth, connect eef to all object particles due to slow message passing
+    obj_tool_mask_1 = tool_mask_1 * mask_2  # particle sender, tool receiver
+    obj_tool_mask_2 = tool_mask_2 * mask_1  # particle receiver, tool sender
+    
+    material_mask = torch.tensor([material_type == 'cloth' for material_type in material_types], device=states.device, dtype=bool) # (B, )
+    batch_mask = torch.ones((B, N, N), device=states.device, dtype=bool) # (B, N, N)
+    batch_mask = batch_mask * material_mask[:, None, None] # (B, N, N)
+    
+    batch_obj_tool_mask_1 = obj_tool_mask_1 * batch_mask  # (B, N, N)
+    neg_batch_obj_tool_mask_1 = obj_tool_mask_1 * (~batch_mask)  # (B, N, N)
+    batch_obj_tool_mask_2 = obj_tool_mask_2 * batch_mask  # (B, N, N)
+    neg_batch_obj_tool_mask_2 = obj_tool_mask_2 * (~batch_mask)  # (B, N, N)
+    
+    adj_matrix[batch_obj_tool_mask_1] = 0
+    adj_matrix[batch_obj_tool_mask_2] = 1
+    adj_matrix[neg_batch_obj_tool_mask_1] = 0
+    adj_matrix[neg_batch_obj_tool_mask_2] = 0
+    adj_matrix[tool_mask_12] = 0  # avoid tool to tool relations
+    
+    # import pdb; pdb.set_trace()
+        
+    # construct relation graph
     n_rels = adj_matrix.sum(dim=(1,2))
     # print(f'n_rels: {n_rels}') # (64)
     # print(n_rels.shape, (mask * 1.0).sum(-1).mean().item(), n_rels.mean().item())
@@ -116,9 +123,20 @@ def load_pairs(pairs_path, episode_range):
     pair_lists = np.array(pair_lists).astype(int)
     return pair_lists
 
-def load_dataset(dataset, material_config, phase='train'):
-    data_dir = dataset["data_dir"]
-    prep_data_dir = dataset["prep_data_dir"]
+def load_dataset(dataset_config, material_config, phase='train'):
+    """
+    :param dataset_config: dict, dataset configuration
+    :param material_config: dict, material configuration
+    :param phase: str, 'train' or 'valid'
+    
+    :return: pair_lists: np.array, (num_pairs, 2), episode_idx, frame_idx
+    :return: material_types: list, one-hot encoding
+    :return: physics_params: list, physics parameters
+    """
+    
+    data_dir = dataset_config['data_dir']
+    prep_data_dir = dataset_config['prep_data_dir']
+    dataset = dataset_config['datasets']
 
     # load kypts paths
     num_episodes = len(list(glob.glob(os.path.join(data_dir, f"episode_*"))))
@@ -134,29 +152,30 @@ def load_dataset(dataset, material_config, phase='train'):
     print(f'{phase} dataset has {len(list(episode_range_phase))} episodes, {len(pair_lists)} frame pairs')
 
     physics_params = []
+    material_types = [] 
     for episode_idx in range(num_episodes):
+        # load material type
+        with open(os.path.join(data_dir, f"episode_{episode_idx}/material.txt"), "r") as f:
+            material_name = f.read().strip()
+        material_types.append(material_name)
+        
+        # load physics parameters
         physics_path = os.path.join(data_dir, f"episode_{episode_idx}/property_params.json")
         with open(physics_path) as f:
             properties = json.load(f)
         
-        physics_params_episode = {}
+        material_params = material_config[material_name]['physics_params']
+        used_params = []
+        for item in material_params:
+            if item['name'] in properties.keys() and item['use']:
+                range_min = item['min']
+                range_max = item['max']
+                used_params.append((properties[item['name']] - range_min) / (range_max - range_min + 1e-6)) # normalize to [0, 1]
+        
+        used_params = np.array(used_params).astype(np.float32)
+        physics_params.append(used_params)
 
-        for material_name in dataset["materials"]:
-            material_params = material_config[material_name]['physics_params']
-
-            used_params = []
-            for item in material_params:
-                if item['name'] in properties.keys() and item['use']:
-                    range_min = item['min']
-                    range_max = item['max']
-                    used_params.append((properties[item['name']] - range_min) / (range_max - range_min + 1e-6))
-            
-            used_params = np.array(used_params).astype(np.float32)
-            # used_params = used_params * 2. - 1. #TODO: normalize to [-1, 1]
-            physics_params_episode[material_name] = used_params
-        physics_params.append(physics_params_episode)
-
-    return pair_lists, physics_params  
+    return pair_lists, material_types, physics_params  
 
 class DynDataset(Dataset):
     def __init__(
@@ -171,31 +190,21 @@ class DynDataset(Dataset):
 
         self.dataset_config = dataset_config
         self.material_config = material_config
-
-        self.pair_lists = []
-        self.physics_params = []
-
-        self.materials = {}
-
-        for i, dataset in enumerate(dataset_config['datasets']):
-            print(f'Setting up dataset {dataset["name"]} at {dataset["data_dir"]}')
-            materials_list = dataset['materials']
-            
-            pair_lists, physics_params = load_dataset(dataset, material_config, phase)
-            pair_lists = np.concatenate([np.ones((pair_lists.shape[0], 1)) * i, pair_lists], axis=1)
-            for k in physics_params[0].keys():
-                self.materials[k] = physics_params[0][k].shape[0]
-            print('Length of dataset is', len(pair_lists))
-
-            self.pair_lists.extend(pair_lists)
-            self.physics_params.append(physics_params)  # [dataset_idx][episode_idx][material_name][param_idx]
-
-        self.pair_lists = np.array(self.pair_lists) 
         
-        num_episodes = len(list(glob.glob(os.path.join(dataset_config['datasets'][0]["data_dir"], f"episode_*"))))
-        data_dir = dataset_config['datasets'][0]["data_dir"]
+        data_dir = dataset_config['data_dir']
+        
+        # generate pair lists, material types, physics params
+        print(f'Setting up dataset mixed at {data_dir}')
+        pair_lists, material_types, physics_params = load_dataset(dataset_config, material_config, phase)
+        pair_lists = np.concatenate([np.ones((pair_lists.shape[0], 1)) * 0, pair_lists], axis=1)
+        print('Length of dataset is', len(pair_lists))
+        
+        self.pair_lists = np.array(pair_lists) # (num_pairs, 2), episode_idx, frame_idx
+        self.material_types = material_types # size: num_episodes
+        self.physics_params = physics_params # size: num_episodes
         
         # save all particles and tool states
+        num_episodes = len(list(glob.glob(os.path.join(data_dir, f"episode_*")))) 
         self.all_particle_pos = []
         self.all_tool_states = []
         for episode_idx in range(num_episodes):
@@ -207,22 +216,19 @@ class DynDataset(Dataset):
             self.all_particle_pos.append(particles_pos) 
             self.all_tool_states.append(tool_states)
 
-        
     def __len__(self):
         return len(self.pair_lists)
     
     def __getitem__(self, i):
 
-        dataset_idx = self.pair_lists[i][0].astype(int)
         episode_idx = self.pair_lists[i][1].astype(int)
         pair = self.pair_lists[i][2:].astype(int)
-        
-        assert dataset_idx == 0, 'only support single dataset'
+        material_type = self.material_types[episode_idx]
         
         n_his = self.dataset_config['n_his']
         n_future = self.dataset_config['n_future']
 
-        dataset_config = self.dataset_config['datasets'][dataset_idx]
+        dataset_config = self.dataset_config['datasets']['material'][material_type]
         max_n = dataset_config['max_n']
         max_tool = dataset_config['max_tool']
         max_nobj = dataset_config['max_nobj']
@@ -233,19 +239,17 @@ class DynDataset(Dataset):
         state_noise = dataset_config['state_noise'][self.phase]
         phys_noise = dataset_config['phys_noise'][self.phase]
         
+        material_category = self.material_config['material_index']
+        material_index = material_category[material_type]
+        
         # get history keypoints
         obj_kps, tool_kps = [], []
         for i in range(len(pair)):
             frame_idx = pair[i]
-            # obj_kp: (1, num_obj_points, 3)
-            # tool_kp: (num_tool_points, 3)
-            # obj_ptcls = self.all_particle_pos[episode_idx]
-            # obj_kp, tool_kp = extract_kp_single_frame(dataset_config['data_dir'], episode_idx, frame_idx)
-            # print(obj_kp.shape, tool_kp.shape) 
             
+            # extract keypoints
             obj_kp = self.all_particle_pos[episode_idx][frame_idx][None] # (1, num_obj_points, 3)
             tool_kp = self.all_tool_states[episode_idx][frame_idx] # (num_tool_points, 3)
-            
             # print(obj_kp.shape, tool_kp.shape)
             
             obj_kps.append(obj_kp)
@@ -258,7 +262,6 @@ class DynDataset(Dataset):
         fps_idx_list = []
         
         # old sampling using raw particles
-        # TODO: change it to preprocessing?
         for j in range(len(obj_kp_start)):
             # farthers point sampling
             particle_tensor = torch.from_numpy(obj_kp_start[j]).float()[None, ...] # convert the first dim to None
@@ -351,17 +354,16 @@ class DynDataset(Dataset):
             ptcl_cnt += len(fps_idx_list[j_perm[j]])
         
         # construct physics information
-        physics_param = self.physics_params[dataset_idx][episode_idx]  # dict
-        for material_name in dataset_config['materials']:
-            if material_name not in physics_param.keys():
-                raise ValueError(f'Physics parameter {material_name} not found in {dataset_config["data_dir"]}')
-            physics_param[material_name] += np.random.uniform(-phys_noise, phys_noise, 
-                    size=physics_param[material_name].shape)
+        physics_param = self.physics_params[episode_idx]  
+        physics_param += np.random.uniform(-phys_noise, phys_noise, size=physics_param.shape)
         
-        # new: construct physics information for each particle
-        material_idx = np.zeros((max_nobj, len(self.material_config['material_index'])), dtype=np.int32)
-        assert len(dataset_config['materials']) == 1, 'only support single material'
-        material_idx[:obj_kp_num, self.material_config['material_index'][dataset_config['materials'][0]]] = 1
+        # construct material one-hot encoding
+        material_idx = material_index
+        material_encoding = np.zeros(len(material_category), dtype=np.int32)
+        material_encoding[material_idx] = 1
+        
+        # construct adj_thresh_range based on material type
+        # adj_radius_range = dataset_config['adj_radius_range']
         
         # construct attributes
         attr_dim = 2 # (obj, tool)
@@ -372,7 +374,7 @@ class DynDataset(Dataset):
         # state randomness
         state_history += np.random.uniform(-state_noise, state_noise, size=state_history.shape)
         
-        # TODO: rotation randomness
+        # rotation randomness
         random_rot = np.random.uniform(-np.pi, np.pi)
         rot_mat = np.array([[np.cos(random_rot), -np.sin(random_rot), 0],
                             [np.sin(random_rot), np.cos(random_rot), 0],
@@ -382,40 +384,6 @@ class DynDataset(Dataset):
         tool_future = tool_future @ rot_mat[None]
         states_delta_future = states_delta_future @ rot_mat[None]
         obj_kp_future = obj_kp_future @ rot_mat[None]
-        
-        # translation randomness
-        # random_translation = np.random.uniform(-1, 1, size=3)
-        # state_history += random_translation[None, None]
-        # states_delta += random_translation[None]
-        # tool_future += random_translation[None, None]
-        # states_delta_future += random_translation[None, None]
-        # obj_kp_future += random_translation[None, None]
-        
-        # numpy to torch
-        # state_history = torch.from_numpy(state_history).float()
-        # states_delta = torch.from_numpy(states_delta).float()
-        # tool_future = torch.from_numpy(tool_future).float()
-        # states_delta_future = torch.from_numpy(states_delta_future).float()
-        # obj_kp_future = torch.from_numpy(obj_kp_future).float()
-        # # obj_future_mask = torch.from_numpy(obj_future_mask)
-        # attrs = torch.from_numpy(attrs).float()
-        # p_rigid = torch.from_numpy(p_rigid).float()
-        # p_instance = torch.from_numpy(p_instance).float()
-        # physics_param = {k: torch.from_numpy(v).float() for k, v in physics_param.items()}
-        # material_idx = torch.from_numpy(material_idx).long()
-        # state_mask = torch.from_numpy(state_mask)
-        # tool_mask = torch.from_numpy(tool_mask)
-        # obj_mask = torch.from_numpy(obj_mask)
-
-        # construct edges
-        # adj_thresh = np.random.uniform(*adj_radius_range)
-        # adj_thresh = torch.tensor([adj_thresh], device=state_history.device, dtype=state_history.dtype)
-        # Rr, Rs = construct_edges_from_states(state_history[-1][None], adj_thresh, 
-        #             mask=state_mask[None], tool_mask=tool_mask[None], no_self_edge=True)
-        # Rr = Rr[0]
-        # Rs = Rs[0]
-        # Rr = pad_torch(Rr, max_nR)
-        # Rs = pad_torch(Rs, max_nR)
 
         # save graph
         graph = {
@@ -439,19 +407,15 @@ class DynDataset(Dataset):
             "attrs": attrs, # (N+2M, attr_dim)
             "p_rigid": p_rigid, # (n_instance, )
             "p_instance": p_instance, # (N, n_instance)
-            # "physics_param": physics_param, # (N, phys_dim)
             "state_mask": state_mask, # (N+2M, )
             "tool_mask": tool_mask, # (N+2M, )
             "obj_mask": obj_mask, # (N, )
 
             "pushing_direction": pushing_direction, # (3, )
+            
+            "material_encoding": material_encoding, # (num_materials, )
+            "physics_param": physics_param, # (physics_dim, )
         }
-
-        for material_name, material_dim in self.materials.items():
-            if material_name in physics_param.keys():
-                graph[material_name + '_physics_param'] = physics_param[material_name]
-            else:
-                graph[material_name + '_physics_param'] = torch.zeros(material_dim, dtype=torch.float32)
 
         return graph
 
