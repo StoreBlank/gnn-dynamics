@@ -64,7 +64,7 @@ def construct_relations_mixed(states, state_mask, tool_mask, adj_thresh_ranges, 
     Rr, Rs = construct_edges_from_states(states[:, -1], adj_thresh,
                                          mask=state_mask, tool_mask=tool_mask, 
                                          material_types=material_types, 
-                                         no_self_edge=True,)
+                                         no_self_edge=True)
     
     assert Rr[:, -1].sum() > 0
     Rr, Rs = Rr.detach(), Rs.detach()
