@@ -92,6 +92,10 @@ def train(config):
         dataset_config=dataset_config,
         material_config=material_config,
     ) for phase in phases}
+    # save dataset
+    torch.save(datasets['train'], os.path.join(train_config['out_dir'], 'train_dataset.pth'))
+    torch.save(datasets['valid'], os.path.join(train_config['out_dir'], 'valid_dataset.pth'))
+    
     dataloaders = {phase: DataLoader(
         datasets[phase],
         batch_size=train_config['batch_size'],
@@ -99,6 +103,7 @@ def train(config):
         num_workers=1,
     ) for phase in phases}
     dataloaders = {phase: dataloader_wrapper(dataloaders[phase], phase) for phase in phases}
+    
 
     # model
     model_config['n_his'] = train_config['n_his']

@@ -1,6 +1,6 @@
 train_config:
   # out_dir: "/mnt/nvme1n1p1/baoyu/logs/rope_0119"
-  out_dir: "/mnt/sda/adaptigraph/logs/all_0410"
+  out_dir: "/mnt/sda/adaptigraph/logs/all_0414"
   phases: ["train", "valid"]
   load_model: False
   model_checkpoint: "/mnt/nvme1n1p1/baoyu/logs/rope_0119/checkpoints/model_100.pth"
@@ -48,8 +48,8 @@ model_config:
   phys_encode: False
 
 dataset_config:
-  data_dir: "/mnt/sda/data_simple/mixed_subset"
-  prep_data_dir: "/mnt/sda/adaptigraph/preprocess_010/mixed_subset_0411"
+  data_dir: "/mnt/sda/data_simple/mixed"
+  prep_data_dir: "/mnt/sda/adaptigraph/preprocess_010/mixed_0410"
   datasets:
     ratio: 
         train: [0, 0.9]
