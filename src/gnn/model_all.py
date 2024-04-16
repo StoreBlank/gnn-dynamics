@@ -85,7 +85,7 @@ class DynamicsPredictor(nn.Module):
         
         # Input dimension
         self.material_dim = len(self.material_config['material_index'])
-        self.physics_dim = 1
+        self.physics_dim = 1 #TODO
         input_dim = model_config['n_his'] * model_config['state_dim'] + \
                     model_config['n_his'] * model_config['offset_dim'] + \
                     model_config['attr_dim'] + \

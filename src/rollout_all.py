@@ -598,7 +598,11 @@ def rollout_episode_pushes(model, device, dataset, material_config, pairs, episo
     error_list_pushes = []
     for i in range(len(steps)-1):
         # set valid pairs, which the first frame is the current step
-        valid_pairs = pairs[pairs[:, 0] == steps[i]]
+        if material_type == 'cloth':
+            valid_pairs = pairs[pairs[:, 0] == steps[i] + 2]
+        else:
+            valid_pairs = pairs[pairs[:, 0] == steps[i]]
+        
         try:
             assert len(valid_pairs) > 0
         except:

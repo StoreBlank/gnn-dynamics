@@ -195,11 +195,11 @@ if __name__ == "__main__":
     data_dir_list = [
         # f"/mnt/nvme1n1p1/baoyu/{data_name}"
         # f"/mnt/sda/data/granular/carrots"
-        "/mnt/sda/data_simple/carrots"
+        "/mnt/sda/data_simple/carrots_mixed_1"
     ]
     save_dir_list = [
         # f"/mnt/nvme1n1p1/baoyu/preprocess_010/{data_name}"
-        f"/mnt/sda/adaptigraph/preprocess_010/granular_0405"
+        f"/mnt/sda/adaptigraph/preprocess_010/granular_0414"
     ]
     dist_thresh = 0.10 #(0.5cm, 1.0cm, 2.5cm)
     n_his = 4

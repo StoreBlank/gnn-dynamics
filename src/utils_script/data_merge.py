@@ -61,7 +61,15 @@ def copy_random_subfolders(source_dir, target_dir, num_folders):
         
         print(f"Copying {folder} to {new_folder_path}...")
         shutil.copytree(folder, new_folder_path)
-        
+
+def add_material_txt(dir, material):
+    epi_start = 0
+    epi_end = 1500
+    for i in range(epi_start, epi_end):
+        epi_dir = os.path.join(dir, f"episode_{i}")
+        with open(os.path.join(epi_dir, "material.txt"), "w") as f:
+            f.write(material)
+        print(f"Done with {epi_dir} with material {material}.")
 
 if __name__ == "__main__":
     main_folders = [
@@ -70,12 +78,15 @@ if __name__ == "__main__":
         "/mnt/sda/data_simple/rope"
     ]
     material_categories = ["granular", "cloth", "rope"]
-    destination_path = "/mnt/sda/data_simple/mixed"
+    # destination_path = "/mnt/sda/data_simple/mixed"
     # merge_data(main_folders, destination_path, material_categories)
     
-    subset_dir = "/mnt/sda/data_simple/mixed_subset"
-    copy_random_subfolders(destination_path, subset_dir, 10)
+    # subset_dir = "/mnt/sda/data_simple/mixed_subset"
+    # copy_random_subfolders(destination_path, subset_dir, 10)
     
+    dir = "/mnt/sda/data_simple/carrots_mixed_1"
+    material = material_categories[0]
+    add_material_txt(dir, material)
     
     
     

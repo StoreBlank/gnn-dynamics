@@ -191,10 +191,12 @@ def extract_eef_points(data_dir):
 if __name__ == "__main__":
     data_name = "cloth"
     data_dir_list = [
-        f"/mnt/nvme1n1p1/baoyu/data/{data_name}"
+        # f"/mnt/nvme1n1p1/baoyu/data/{data_name}"
+        f"/mnt/sda/data_simple/{data_name}"
     ]
     save_dir_list = [
-        f"/mnt/nvme1n1p1/baoyu/preprocess_010/{data_name}"
+        # f"/mnt/nvme1n1p1/baoyu/preprocess_010/{data_name}"
+        f"/mnt/sda/adaptigraph/preprocess_010/{data_name}_simple"
     ]
     dist_thresh = 0.1 #(0.5cm, 1.0cm, 2.5cm)
     n_his = 4

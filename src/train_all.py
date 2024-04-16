@@ -93,8 +93,8 @@ def train(config):
         material_config=material_config,
     ) for phase in phases}
     # save dataset
-    torch.save(datasets['train'], os.path.join(train_config['out_dir'], 'train_dataset.pth'))
-    torch.save(datasets['valid'], os.path.join(train_config['out_dir'], 'valid_dataset.pth'))
+    # torch.save(datasets['train'], os.path.join(train_config['out_dir'], 'train_dataset.pth'))
+    # torch.save(datasets['valid'], os.path.join(train_config['out_dir'], 'valid_dataset.pth'))
     
     dataloaders = {phase: DataLoader(
         datasets[phase],

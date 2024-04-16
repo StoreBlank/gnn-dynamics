@@ -10,23 +10,6 @@ from matplotlib.collections import LineCollection
 font = {'family' : 'Times New Roman'}
 matplotlib.rc('font', **font)
 
-# def process_long_data(data_dir, save_dir, epi_start, epi_end):
-#     if not os.path.exists(save_dir):
-#         os.makedirs(save_dir)
-        
-#     all_long_error, all_long_error_baseline = [], []
-#     for i in range(epi_start, epi_end):
-#         # long erros
-#         long_dir = os.path.join(data_dir, f"{i}", "long")
-#         # read the file
-#         long_error = np.loadtxt(os.path.join(long_dir, "error.txt"))
-#         long_error_baseline = np.loadtxt(os.path.join(long_dir, "error_baseline.txt"))
-#         all_long_error.append(long_error)
-#         all_long_error_baseline.append(long_error_baseline)
-#     # save the data
-#     # np.save(os.path.join(save_dir, "all_long_error.npy"), np.array(all_long_error))
-#     # np.save(os.path.join(save_dir, "all_long_error_baseline.npy"), np.array(all_long_error_baseline))
-#     return all_long_error, all_long_error_baseline
 
 def process_long_data(data_dir, epi_start, epi_end):
     if not os.path.exists(save_dir):
@@ -86,24 +69,30 @@ def boxplot(data, save_dir, max_step=30, name="rope"):
     
 if __name__ == "__main__":
     
-    # # rope
-    # epi_start = 900
-    # epi_end = 1000
-    # max_step = 30
-    # y_axis = -0.25
-    # data_dirs = [
-    #     "/mnt/nvme1n1p1/baoyu/vis/rollout-rope_0119_no_physics-model_100/rope",
-    #     "/mnt/nvme1n1p1/baoyu/vis/rollout-rope_0119-model_100-constant/rope",
-    #     "/mnt/nvme1n1p1/baoyu/vis/rollout-rope_0119-model_100/rope"
-    # ]
-    # name = "rope"
-    # save_dir = "/home/baoyu/2023/gnn-dynamics/src/figure"
-    # save_dir = os.path.join(save_dir, f"{name}")
-    # all_long_error = []
-    # for i in range(3):
-    #     long_error, long_error_baseline = process_long_data(data_dirs[i], epi_start, epi_end)
-    #     all_long_error.append(long_error)
-    # boxplot(all_long_error, save_dir, max_step, name)
+    # rope
+    epi_start = 900
+    epi_end = 1000
+    max_step = 30
+    y_axis = -0.25
+    data_dirs = [
+        "/mnt/nvme1n1p1/baoyu/vis/rollout-rope_0119_no_physics-model_100/rope",
+        "/mnt/nvme1n1p1/baoyu/vis/rollout-rope_0119-model_100-constant/rope",
+        "/mnt/nvme1n1p1/baoyu/vis/rollout-rope_0119-model_100/rope"
+    ]
+    data_dirs = [
+        "/mnt/nvme1n1p1/baoyu/vis/rollout-rope_0119_no_physics-model_100/rope",
+        "/mnt/nvme1n1p1/baoyu/vis/rollout-rope_0119-model_100-constant/rope",
+        "/mnt/nvme1n1p1/baoyu/vis/rollout-rope_0119-model_100/rope"
+    ]
+    
+    name = "rope"
+    save_dir = "/home/baoyu/2023/gnn-dynamics/src/figure"
+    save_dir = os.path.join(save_dir, f"{name}")
+    all_long_error = []
+    for i in range(3):
+        long_error, long_error_baseline = process_long_data(data_dirs[i], epi_start, epi_end)
+        all_long_error.append(long_error)
+    boxplot(all_long_error, save_dir, max_step, name)
 
     
     # # box
@@ -144,21 +133,21 @@ if __name__ == "__main__":
     #     all_long_error.append(long_error)
     # boxplot(all_long_error, save_dir, max_step, name)
     
-    # cloth
-    epi_start = 900
-    epi_end = 1000
-    max_step = 11
-    y_axis = -0.2
-    data_dirs = [
-        "/mnt/nvme1n1p1/baoyu/vis/rollout-cloth_0127_no_physics-model_100/cloth",
-        "/mnt/nvme1n1p1/baoyu/vis/rollout-cloth_0127-model_100/cloth",
-        "/mnt/nvme1n1p1/baoyu/vis/rollout-cloth_0127-model_100_ours/cloth"
-    ]
-    name = "cloth"
-    save_dir = "/home/baoyu/2023/gnn-dynamics/src/figure"
-    save_dir = os.path.join(save_dir, f"{name}")
-    all_long_error = []
-    for i in range(3):
-        long_error, long_error_baseline = process_long_data(data_dirs[i], epi_start, epi_end)
-        all_long_error.append(long_error)
-    boxplot(all_long_error, save_dir, max_step, name)
+    # # cloth
+    # epi_start = 900
+    # epi_end = 1000
+    # max_step = 11
+    # y_axis = -0.2
+    # data_dirs = [
+    #     "/mnt/nvme1n1p1/baoyu/vis/rollout-cloth_0127_no_physics-model_100/cloth",
+    #     "/mnt/nvme1n1p1/baoyu/vis/rollout-cloth_0127-model_100/cloth",
+    #     "/mnt/nvme1n1p1/baoyu/vis/rollout-cloth_0127-model_100_ours/cloth"
+    # ]
+    # name = "cloth"
+    # save_dir = "/home/baoyu/2023/gnn-dynamics/src/figure"
+    # save_dir = os.path.join(save_dir, f"{name}")
+    # all_long_error = []
+    # for i in range(3):
+    #     long_error, long_error_baseline = process_long_data(data_dirs[i], epi_start, epi_end)
+    #     all_long_error.append(long_error)
+    # boxplot(all_long_error, save_dir, max_step, name)
