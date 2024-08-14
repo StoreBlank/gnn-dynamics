@@ -1,6 +1,6 @@
 train_config:
   # out_dir: "/mnt/sda/logs/granular"
-  out_dir: "/mnt/nvme1n1p1/baoyu/logs/granular_0127"
+  out_dir: "logs/granular"
   phases: ["train", "valid"]
   load_model: False
   model_checkpoint: "/mnt/nvme1n1p1/baoyu/checkpoints/latest.pth"
@@ -23,6 +23,7 @@ model_config:
   nf_particle: 150
   nf_relation: 150
   nf_effect: 150
+  out_dim: 3
 
   nf_physics_hidden: 20
   nf_physics: 10
@@ -54,27 +55,25 @@ model_config:
   phys_encode: False
 
 dataset_config:
-  datasets:
-    - name: "granular"
-      materials: ["granular"]
-      data_dir: "/mnt/nvme1n1p1/baoyu/data_simple/carrots_mixed_1"
-      prep_data_dir: "/mnt/nvme1n1p1/baoyu/preprocess_010/carrots_mixed_1"
-      fps_radius_range: [0.18, 0.22]
-      adj_radius_range: [0.38, 0.42]
-      state_noise: 
-        train: 0.04
-        valid: 0.0
-      phys_noise: 
-        train: 0.0
-        valid: 0.0
-      ratio: 
-        train: [0, 0.9]
-        valid: [0.9, 1]
-      max_n: 1
-      max_tool: 1
-      max_nobj: 100
-      max_ntool: 5
-      max_nR: 1500
+  materials: ["granular"]
+  data_dir: "../data/granular"
+  prep_data_dir: "../data/preprocess/granular"
+  fps_radius_range: [0.18, 0.22]
+  adj_radius_range: [0.58, 0.62]
+  state_noise: 
+    train: 0.04
+    valid: 0.0
+  phys_noise: 
+    train: 0.0
+    valid: 0.0
+  ratio: 
+    train: [0, 0.9]
+    valid: [0.9, 1]
+  max_n: 1
+  max_tool: 1
+  max_nobj: 100
+  max_ntool: 5
+  max_nR: 1500
 
 material_config:
   material_index:

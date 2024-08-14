@@ -1,10 +1,8 @@
 train_config:
-  out_dir: "/mnt/sda/adaptigraph/logs/rope_0119"
+  out_dir: "logs/rope_40"
   # out_dir: "/mnt/nvme1n1p1/baoyu/logs/rope_0119"
   phases: ["train", "valid"]
   load_model: False
-  model_checkpoint: "/mnt/nvme1n1p1/baoyu/logs/rope_0119/checkpoints/model_100.pth"
-  optimizer_checkpoint: "/mnt/nvme1n1p1/baoyu/logs/rope_0119/checkpoints/optim_100.pth"
   device: "cuda:0"
   
   batch_size: 128
@@ -23,6 +21,7 @@ model_config:
   nf_particle: 150
   nf_relation: 150
   nf_effect: 150
+  out_dim: 3
 
   nf_physics_hidden: 20
   nf_physics: 10
@@ -54,29 +53,32 @@ model_config:
   phys_encode: False
 
 dataset_config:
-  datasets:
-    - name: "rope"
-      materials: ["rope"]
-      # data_dir: "/mnt/sda/data/rope"
-      # prep_data_dir: "/mnt/sda/preprocess/rope"
-      data_dir: "/mnt/sda/data/rope"
-      prep_data_dir: "/mnt/sda/adaptigraph/preprocess_010/rope_0402"
-      fps_radius_range: [0.18, 0.22]
-      adj_radius_range: [0.48, 0.52]
-      state_noise: 
-        train: 0.05
-        valid: 0.0
-      phys_noise: 
-        train: 0.0
-        valid: 0.0
-      ratio: 
-        train: [0, 0.9]
-        valid: [0.9, 1]
-      max_n: 1
-      max_tool: 1
-      max_nobj: 100
-      max_ntool: 1
-      max_nR: 2000
+  materials: ["rope"]
+  # data_dir: "/mnt/sda/data/rope"
+  # prep_data_dir: "/mnt/sda/preprocess/rope"
+  data_dir: "../data/rope_40"
+  prep_data_dir: "../data/preprocess/rope_40"
+  fps_radius_range: [0.18, 0.22]
+  # fps_radius_range: [0.23, 0.27]
+  # fps_radius_range: [0.28, 0.32]
+  # adj_radius_range: [0.48, 0.52]
+  adj_radius_range: [0.58, 0.62]
+  # adj_radius_range: [0.68, 0.72]
+  # adj_radius_range: [0.78, 0.82]
+  state_noise: 
+    train: 0.05
+    valid: 0.0
+  phys_noise: 
+    train: 0.0
+    valid: 0.0
+  ratio: 
+    train: [0, 0.9]
+    valid: [0.9, 1]
+  max_n: 1
+  max_tool: 1
+  max_nobj: 100
+  max_ntool: 1
+  max_nR: 2000
 
 material_config:
   material_index:

@@ -70,7 +70,6 @@ def train(config):
     train_config = config['train_config']
     model_config = config['model_config']
     dataset_config = config['dataset_config']
-    material_config = config['material_config']
     
     torch.autograd.set_detect_anomaly(True)
     set_seed(train_config['random_seed'])
@@ -86,19 +85,18 @@ def train(config):
     dataset_config['n_future'] = train_config['n_future']
     datasets = {phase: DynDataset(
         dataset_config=dataset_config,
-        material_config=material_config,
     ) for phase in phases}
     dataloaders = {phase: DataLoader(
         datasets[phase],
         batch_size=train_config['batch_size'],
         shuffle=(phase == 'train'),
-        num_workers=1,
+        num_workers=8,
     ) for phase in phases}
     dataloaders = {phase: dataloader_wrapper(dataloaders[phase], phase) for phase in phases}
 
     # model
     model_config['n_his'] = train_config['n_his']
-    model = DynamicsPredictor(model_config, material_config, device)
+    model = DynamicsPredictor(model_config, device)
     model.to(device)
 
     # loss function and optimizer
@@ -154,7 +152,7 @@ def train(config):
                         
                         # construct edges/relations
                         data['Rr'], data['Rs'] = construct_relations(data['state'], state_mask, tool_mask,
-                                            adj_thresh_range=dataset_config['datasets'][0]['adj_radius_range'],
+                                            adj_thresh_range=dataset_config['adj_radius_range'],
                                             pushing_direction=data['pushing_direction'])
                         # print(f"Rr: {data['Rr'].shape}, Rs: {data['Rs'].shape}")
                         # print(f"number of states: {data['state_future'].shape}")
@@ -165,6 +163,15 @@ def train(config):
                         
                         loss = [weight * func(pred_state_p, gt_state) for func, weight in loss_funcs]
                         loss_sum += sum(loss)
+                        # rigid loss
+                        if train_config['out_dir'] == 'logs/merging_L':
+                            mask_1 = data['p_instance'][..., 0] == 1
+                            mask_2 = data['p_instance'][..., 1] == 1
+                            loss_sum += 0.8 * rigid_loss(gt_state, pred_state_p, mask_1)
+                            loss_sum += 0.8 * rigid_loss(gt_state, pred_state_p, mask_2)
+                        if train_config['out_dir'] == 'logs/pushing_T':
+                            mask = data['p_instance'][..., 0] == 1
+                            loss_sum += 0.8 * rigid_loss(gt_state, pred_state_p, mask)
                         
                         if fi < train_config['n_future'] - 1:
                             # build next graph
@@ -217,11 +224,12 @@ def train(config):
         
         time2 = time.time()
         print(f'Epoch {epoch} time: {time2 - time1}\n')
-                        
-                        
+
+
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument('--config', type=str, default='config/debug.yaml')
+    # Check before train
+    arg_parser.add_argument('--config', type=str, default='src/config/pushing_T.yaml')
     args = arg_parser.parse_args()
 
     with open(args.config, 'r') as f:

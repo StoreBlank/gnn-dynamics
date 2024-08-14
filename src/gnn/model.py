@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .utils import umeyama_algorithm
+
 
 class Encoder(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
@@ -30,6 +32,7 @@ class Propagator(nn.Module):
 
         self.linear = nn.Linear(input_size, output_size)
         self.relu = nn.ReLU()
+        self.output_size = output_size
 
     def forward(self, x, res=None):
         s_x = x.size()
@@ -52,6 +55,7 @@ class ParticlePredictor(nn.Module):
         self.linear_1 = nn.Linear(hidden_size, hidden_size)
         self.linear_2 = nn.Linear(hidden_size, output_size)
         self.relu = nn.ReLU()
+        self.output_size = output_size
 
     def forward(self, x):
         s_x = x.size()
@@ -64,18 +68,17 @@ class ParticlePredictor(nn.Module):
 
 
 class DynamicsPredictor(nn.Module):
-    def __init__(self, model_config, material_config, device):
+    def __init__(self, model_config, device):
 
         super(DynamicsPredictor, self).__init__()
 
         self.model_config = model_config
-        self.material_config = material_config
         self.device = device
 
         self.nf_particle = model_config['nf_particle']
         self.nf_relation = model_config['nf_relation']
         self.nf_effect = model_config['nf_effect']
-        self.nf_physics = model_config['nf_physics']
+        self.out_dim = model_config['out_dim']
         self.state_normalize = False
 
         self.quat_offset = torch.FloatTensor([1., 0., 0., 0.]).to(device)
@@ -122,33 +125,19 @@ class DynamicsPredictor(nn.Module):
         # input_dim = args.attr_dim + args.density_dim + args.n_his * args.state_dim \
         #         + args.n_his * args.offset_dim + args.action_dim + phys_dim  # + args.mem_dim
 
-        self.num_materials = len(material_config['material_index'])
-        material_dim_list = [0] * self.num_materials
-        for i, k in enumerate(material_config['material_index'].keys()):
-            material_params = material_config[k]['physics_params']
-            for param in material_params:
-                if param['use']:
-                    material_dim_list[i] += 1
+        # self.num_materials = len(material_config['material_index'])
+        # material_dim_list = [0] * self.num_materials
+        # for i, k in enumerate(material_config['material_index'].keys()):
+        #     material_params = material_config[k]['physics_params']
+        #     for param in material_params:
+        #         if param['use']:
+        #             material_dim_list[i] += 1
 
-        if self.num_materials > 1:
-            input_dim = model_config['n_his'] * model_config['state_dim'] + \
-                        model_config['n_his'] * model_config['offset_dim'] + \
-                        model_config['attr_dim'] + \
-                        model_config['action_dim'] + \
-                        model_config['density_dim'] + \
-                        self.num_materials + self.nf_physics
-            
-            # PhysicsEncoder
-            self.physics_encoders = nn.ModuleList(
-                [Encoder(material_dim_list[i], model_config['nf_physics_hidden'], self.nf_physics) for i in range(self.num_materials)])
-        
-        else:
-            input_dim = model_config['n_his'] * model_config['state_dim'] + \
-                        model_config['n_his'] * model_config['offset_dim'] + \
-                        model_config['attr_dim'] + \
-                        model_config['action_dim'] + \
-                        model_config['density_dim'] + \
-                        material_dim_list[0]
+        input_dim = model_config['n_his'] * model_config['state_dim'] + \
+                    model_config['n_his'] * model_config['offset_dim'] + \
+                    model_config['attr_dim'] + \
+                    model_config['action_dim'] + \
+                    model_config['density_dim']
 
         self.particle_encoder = Encoder(input_dim, self.nf_particle, self.nf_effect)
 
@@ -190,7 +179,7 @@ class DynamicsPredictor(nn.Module):
         # else:
         #     self.rigid_predictor = None
 
-        self.non_rigid_predictor = ParticlePredictor(self.nf_effect, self.nf_effect, 3)
+        self.non_rigid_predictor = ParticlePredictor(self.nf_effect, self.nf_effect, self.out_dim)
         # self.rigid_predictor = None
         
         if model_config['verbose']:
@@ -338,36 +327,36 @@ class DynamicsPredictor(nn.Module):
         #     p_inputs = torch.cat([p_inputs, physics_param_encoded], 2)
 
         # physics
-        if self.num_materials > 1:
-            physics_keys = [k for k in kwargs.keys() if k.endswith('_physics_param')]
-            materials_keys = [k.replace('_physics_param', '') for k in physics_keys]
-            materials_idxs = [self.material_config['material_index'][k] for k in materials_keys]
+        # if self.num_materials > 1:
+        #     physics_keys = [k for k in kwargs.keys() if k.endswith('_physics_param')]
+        #     materials_keys = [k.replace('_physics_param', '') for k in physics_keys]
+        #     materials_idxs = [self.material_config['material_index'][k] for k in materials_keys]
 
-            particle_materials = kwargs['material_index']
-            particle_materials_s = torch.zeros(B, n_s, particle_materials.shape[2]).to(self.device)
-            particle_materials = torch.cat([particle_materials, particle_materials_s], 1)
+        #     particle_materials = kwargs['material_index']
+        #     particle_materials_s = torch.zeros(B, n_s, particle_materials.shape[2]).to(self.device)
+        #     particle_materials = torch.cat([particle_materials, particle_materials_s], 1)
 
-            physics_encoded_all = torch.zeros(B, N, self.nf_physics).to(self.device).to(state.dtype)
-            for i, k in enumerate(physics_keys):
-                physics_param = kwargs[k]  # (B, phys_dim[i])
-                idx = materials_idxs[i]
-                physics_param_encoded = self.physics_encoders[idx](physics_param)  # (B, nf_physics)
-                physics_param_encoded = physics_param_encoded[:, None, :].repeat(1, N, 1)  # (B, N, nf_physics)
+        #     physics_encoded_all = torch.zeros(B, N, self.nf_physics).to(self.device).to(state.dtype)
+        #     for i, k in enumerate(physics_keys):
+        #         physics_param = kwargs[k]  # (B, phys_dim[i])
+        #         idx = materials_idxs[i]
+        #         physics_param_encoded = self.physics_encoders[idx](physics_param)  # (B, nf_physics)
+        #         physics_param_encoded = physics_param_encoded[:, None, :].repeat(1, N, 1)  # (B, N, nf_physics)
 
-                particle_materials_mask = particle_materials[..., idx].bool()  # (B, N)
-                particle_materials_mask = particle_materials_mask[:, :, None].repeat(1, 1, self.nf_physics)  # (B, N, nf_physics)
-                physics_encoded_all[particle_materials_mask] += physics_param_encoded[particle_materials_mask]
+        #         particle_materials_mask = particle_materials[..., idx].bool()  # (B, N)
+        #         particle_materials_mask = particle_materials_mask[:, :, None].repeat(1, 1, self.nf_physics)  # (B, N, nf_physics)
+        #         physics_encoded_all[particle_materials_mask] += physics_param_encoded[particle_materials_mask]
 
-            p_inputs = torch.cat([p_inputs, particle_materials, physics_encoded_all], 2)
+        #     p_inputs = torch.cat([p_inputs, particle_materials, physics_encoded_all], 2)
         
-        else:
-            physics_keys = [k for k in kwargs.keys() if k.endswith('_physics_param')]
-            assert len(physics_keys) == 1
-            physics_param = kwargs[physics_keys[0]]  # (B, phys_dim[i])
-            physics_param = physics_param[:, None, :].repeat(1, n_p, 1)  # (B, N, phys_dim)
-            physics_param_s = torch.zeros(B, n_s, physics_param.shape[2]).to(self.device)
-            physics_param = torch.cat([physics_param, physics_param_s], 1)
-            p_inputs = torch.cat([p_inputs, physics_param], 2)
+        # else:
+        #     physics_keys = [k for k in kwargs.keys() if k.endswith('_physics_param')]
+        #     assert len(physics_keys) == 1
+        #     physics_param = kwargs[physics_keys[0]]  # (B, phys_dim[i])
+        #     physics_param = physics_param[:, None, :].repeat(1, n_p, 1)  # (B, N, phys_dim)
+        #     physics_param_s = torch.zeros(B, n_s, physics_param.shape[2]).to(self.device)
+        #     physics_param = torch.cat([physics_param, physics_param_s], 1)
+        #     p_inputs = torch.cat([p_inputs, physics_param], 2)
 
         # TODO what if n_instance is not fixed?
         # group info
@@ -451,7 +440,7 @@ class DynamicsPredictor(nn.Module):
             rel_inputs = torch.cat([rel_inputs, group_diff], 2)
         
         if self.model_config['rel_distance_dim'] > 0:
-            assert self.model_config['rel_distance_dim'] == 3
+            # assert self.model_config['rel_distance_dim'] == 3
             # receiver_pos, sender_pos
             # pos_r: B x n_rel x -1
             # pos_s: B x n_rel x -1
@@ -619,6 +608,14 @@ class DynamicsPredictor(nn.Module):
         if self.state_normalize:  # denormalize
             pred_motion = pred_motion * std_d + mean_d
         pred_pos = state[:, -1, :n_p] + torch.clamp(pred_motion, max=self.motion_clamp, min=-self.motion_clamp)
+
+        # rigid motion
+        # if self.model_config['rigid'] == True and self.training == False:
+        #     mask = torch.ones((B, n_p)).to(self.device)
+        #     _, R_pred, t_pred = umeyama_algorithm(state[:, -1, :n_p], pred_pos, mask, fixed_scale=True)
+        #     pred_pos = state[:, -1, :n_p].bmm(R_pred.transpose(1, 2)) + t_pred
+        #     pred_motion = pred_pos - state[:, -1, :n_p]
+
         if self.model_config['verbose']:
             print('pred_pos', pred_pos.size())
 

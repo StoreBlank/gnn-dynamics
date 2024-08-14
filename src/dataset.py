@@ -76,7 +76,10 @@ def construct_edges_from_states(states, adj_thresh, mask, tool_mask, no_self_edg
         adj_matrix = adj_matrix * (1 - self_edge_mask)
 
     # add topk constraints
-    topk = 20 #TODO: hyperparameter
+    # Check before train and rollout
+    topk = 10 #TODO: hyperparameter
+    if topk > dis.shape[-1]:
+        topk = dis.shape[-1]
     topk_idx = torch.topk(dis, k=topk, dim=-1, largest=False)[1]
     topk_matrix = torch.zeros_like(adj_matrix)
     topk_matrix.scatter_(-1, topk_idx, 1)
@@ -116,7 +119,7 @@ def load_pairs(pairs_path, episode_range):
     pair_lists = np.array(pair_lists).astype(int)
     return pair_lists
 
-def load_dataset(dataset, material_config, phase='train'):
+def load_dataset(dataset, phase='train'):
     data_dir = dataset["data_dir"]
     prep_data_dir = dataset["prep_data_dir"]
 
@@ -133,69 +136,47 @@ def load_dataset(dataset, material_config, phase='train'):
     pair_lists = load_pairs(pairs_path, episode_range_phase)
     print(f'{phase} dataset has {len(list(episode_range_phase))} episodes, {len(pair_lists)} frame pairs')
 
-    physics_params = []
-    for episode_idx in range(num_episodes):
-        physics_path = os.path.join(data_dir, f"episode_{episode_idx}/property_params.json")
-        with open(physics_path) as f:
-            properties = json.load(f)
+    # physics_params = []
+    # for episode_idx in range(num_episodes):
+    #     physics_path = os.path.join(data_dir, f"episode_{episode_idx}/property_params.json")
+    #     with open(physics_path) as f:
+    #         properties = json.load(f)
         
-        physics_params_episode = {}
+    #     physics_params_episode = {}
 
-        for material_name in dataset["materials"]:
-            material_params = material_config[material_name]['physics_params']
+    #     for material_name in dataset["materials"]:
+    #         material_params = material_config[material_name]['physics_params']
 
-            used_params = []
-            for item in material_params:
-                if item['name'] in properties.keys() and item['use']:
-                    range_min = item['min']
-                    range_max = item['max']
-                    used_params.append((properties[item['name']] - range_min) / (range_max - range_min + 1e-6))
+    #         used_params = []
+    #         for item in material_params:
+    #             if item['name'] in properties.keys() and item['use']:
+    #                 range_min = item['min']
+    #                 range_max = item['max']
+    #                 used_params.append((properties[item['name']] - range_min) / (range_max - range_min + 1e-6))
             
-            used_params = np.array(used_params).astype(np.float32)
-            # used_params = used_params * 2. - 1. #TODO: normalize to [-1, 1]
-            physics_params_episode[material_name] = used_params
-        physics_params.append(physics_params_episode)
+    #         used_params = np.array(used_params).astype(np.float32)
+    #         # used_params = used_params * 2. - 1. #TODO: normalize to [-1, 1]
+    #         physics_params_episode[material_name] = used_params
+    #     physics_params.append(physics_params_episode)
 
-    return pair_lists, physics_params  
+    return pair_lists
 
 class DynDataset(Dataset):
     def __init__(
         self,
         dataset_config,
-        material_config,
         phase='train',
     ):
         assert phase in ['train', 'valid']
         print(f'Loading {phase} dataset...')
         self.phase = phase
-
         self.dataset_config = dataset_config
-        self.material_config = material_config
 
-        self.pair_lists = []
-        self.physics_params = []
+        self.pair_lists = load_dataset(dataset_config, phase)
 
-        self.materials = {}
+        num_episodes = len(list(glob.glob(os.path.join(dataset_config["data_dir"], f"episode_*"))))
+        data_dir = dataset_config["data_dir"]
 
-        for i, dataset in enumerate(dataset_config['datasets']):
-            print(f'i: {i}')
-            print(f'Setting up dataset {dataset["name"]} at {dataset["data_dir"]}')
-            materials_list = dataset['materials']
-            
-            pair_lists, physics_params = load_dataset(dataset, material_config, phase)
-            pair_lists = np.concatenate([np.ones((pair_lists.shape[0], 1)) * i, pair_lists], axis=1)
-            for k in physics_params[0].keys():
-                self.materials[k] = physics_params[0][k].shape[0]
-            print('Length of dataset is', len(pair_lists))
-
-            self.pair_lists.extend(pair_lists)
-            self.physics_params.append(physics_params)  # [dataset_idx][episode_idx][material_name][param_idx]
-
-        self.pair_lists = np.array(self.pair_lists) 
-        
-        num_episodes = len(list(glob.glob(os.path.join(dataset_config['datasets'][0]["data_dir"], f"episode_*"))))
-        data_dir = dataset_config['datasets'][0]["data_dir"]
-        
         # save all particles and tool states
         self.all_particle_pos = []
         self.all_tool_states = []
@@ -208,32 +189,25 @@ class DynDataset(Dataset):
             self.all_particle_pos.append(particles_pos) 
             self.all_tool_states.append(tool_states)
 
-        
     def __len__(self):
         return len(self.pair_lists)
-    
-    def __getitem__(self, i):
 
-        dataset_idx = self.pair_lists[i][0].astype(int)
-        episode_idx = self.pair_lists[i][1].astype(int)
-        pair = self.pair_lists[i][2:].astype(int)
-        
-        assert dataset_idx == 0, 'only support single dataset'
-        
+    def __getitem__(self, i):
+        episode_idx = self.pair_lists[i][0].astype(int)
+        pair = self.pair_lists[i][1:].astype(int)
+
         n_his = self.dataset_config['n_his']
         n_future = self.dataset_config['n_future']
 
-        dataset_config = self.dataset_config['datasets'][dataset_idx]
-        max_n = dataset_config['max_n']
-        max_tool = dataset_config['max_tool']
-        max_nobj = dataset_config['max_nobj']
-        max_ntool = dataset_config['max_ntool']
-        max_nR = dataset_config['max_nR']
-        fps_radius_range = dataset_config['fps_radius_range']
-        adj_radius_range = dataset_config['adj_radius_range']
-        state_noise = dataset_config['state_noise'][self.phase]
-        phys_noise = dataset_config['phys_noise'][self.phase]
-        
+        max_nobj = self.dataset_config['max_nobj']
+        num_obj = self.dataset_config['max_n']
+        max_ntool = self.dataset_config['max_ntool']
+        num_tool = self.dataset_config['max_tool']
+        max_nR = self.dataset_config['max_nR']
+        fps_radius_range = self.dataset_config['fps_radius_range']
+        adj_radius_range = self.dataset_config['adj_radius_range']
+        state_noise = self.dataset_config['state_noise'][self.phase]
+
         # get history keypoints
         obj_kps, tool_kps = [], []
         for i in range(len(pair)):
@@ -244,7 +218,12 @@ class DynDataset(Dataset):
             # obj_kp, tool_kp = extract_kp_single_frame(dataset_config['data_dir'], episode_idx, frame_idx)
             # print(obj_kp.shape, tool_kp.shape) 
             
-            obj_kp = self.all_particle_pos[episode_idx][frame_idx][None] # (1, num_obj_points, 3)
+            # TODO
+            # if num_obj == 1:
+            #     obj_kp = self.all_particle_pos[episode_idx][frame_idx][None] # (1, num_obj_points, 3)
+            # else:
+            #     obj_kp = self.all_particle_pos[episode_idx][frame_idx] # (num_obj, num_obj_points, 3)
+            obj_kp = self.all_particle_pos[episode_idx][frame_idx]
             tool_kp = self.all_tool_states[episode_idx][frame_idx] # (num_tool_points, 3)
             
             # print(obj_kp.shape, tool_kp.shape)
@@ -253,8 +232,9 @@ class DynDataset(Dataset):
             tool_kps.append(tool_kp) # (7, num_tool_points, 3)
         
         obj_kp_start = obj_kps[n_his - 1]
+        state_dim = obj_kp_start.shape[-1]
         instance_num = len(obj_kp_start)
-        assert instance_num == 1, 'only support single object'
+        # assert instance_num == 1, 'only support single object'
         
         fps_idx_list = []
         
@@ -263,7 +243,7 @@ class DynDataset(Dataset):
         for j in range(len(obj_kp_start)):
             # farthers point sampling
             particle_tensor = torch.from_numpy(obj_kp_start[j]).float()[None, ...] # convert the first dim to None
-            fps_idx_tensor = farthest_point_sampler(particle_tensor, max_nobj, start_idx=np.random.randint(0, obj_kp_start[j].shape[0]))[0]
+            fps_idx_tensor = farthest_point_sampler(particle_tensor, min(max_nobj, particle_tensor.shape[1]), start_idx=np.random.randint(0, obj_kp_start[j].shape[0]))[0]
             fps_idx_1 = fps_idx_tensor.numpy().astype(np.int32)
             
             # downsample to uniform radius
@@ -274,7 +254,7 @@ class DynDataset(Dataset):
             # print('fps_points:', fps_idx_2.shape)
             fps_idx = fps_idx_1[fps_idx_2]
             fps_idx_list.append(fps_idx)
-        
+
         # downsample to get current obj kp
         obj_kp_start = [obj_kp_start[j][fps_idx] for j, fps_idx in enumerate(fps_idx_list)]
         obj_kp_start = np.concatenate(obj_kp_start, axis=0) # (N, 3)
@@ -285,16 +265,16 @@ class DynDataset(Dataset):
         tool_kp = np.stack(tool_kps[n_his-1:n_his+1], axis=0)
         tool_kp_num = tool_kp.shape[1]
         # print(tool_kp.shape)
-            
+
         ## states (object + tool, 3)
-        states_delta = np.zeros((max_nobj + max_ntool * max_tool, 3), dtype=np.float32)
+        states_delta = np.zeros((max_nobj + max_ntool * num_tool, state_dim), dtype=np.float32)
         states_delta[max_nobj : max_nobj + tool_kp_num] = tool_kp[1] - tool_kp[0]
 
         # new: get pushing direction
         pushing_direction = states_delta[max_nobj]  # (3, )
         
         # load future states
-        obj_kp_future = np.zeros((n_future, max_nobj, 3), dtype=np.float32)
+        obj_kp_future = np.zeros((n_future, max_nobj, state_dim), dtype=np.float32)
         # obj_future_mask = np.ones(n_future).astype(bool) # (n_future, )
         for fi in range(n_future):
             obj_kp_fu = obj_kps[n_his + fi]
@@ -304,8 +284,8 @@ class DynDataset(Dataset):
             obj_kp_future[fi] = obj_kp_fu
         
         # load future tool keypoints
-        tool_future = np.zeros((n_future - 1, max_nobj + max_ntool * max_tool, 3), dtype=np.float32)
-        states_delta_future = np.zeros((n_future - 1, max_nobj + max_ntool * max_tool, 3), dtype=np.float32)
+        tool_future = np.zeros((n_future - 1, max_nobj + max_ntool * num_tool, state_dim), dtype=np.float32)
+        states_delta_future = np.zeros((n_future - 1, max_nobj + max_ntool * num_tool, state_dim), dtype=np.float32)
         for fi in range(n_future - 1):
             # dynamic tool
             tool_kp_future = tool_kps[n_his+fi:n_his+fi+2]
@@ -314,7 +294,7 @@ class DynDataset(Dataset):
             states_delta_future[fi, max_nobj : max_nobj + tool_kp_num] = tool_kp_future[1] - tool_kp_future[0]
         
         # load history states
-        state_history = np.zeros((n_his, max_nobj + max_ntool * max_tool, 3), dtype=np.float32)
+        state_history = np.zeros((n_his, max_nobj + max_ntool * num_tool, state_dim), dtype=np.float32)
         for fi in range(n_his):
             # object 
             obj_kp_his = obj_kps[fi]
@@ -329,44 +309,48 @@ class DynDataset(Dataset):
             state_history[fi, max_nobj : max_nobj + max_ntool] = tool_kp_his
         
         # load masks
-        state_mask = np.zeros((max_nobj + max_ntool * max_tool), dtype=bool)
+        state_mask = np.zeros((max_nobj + max_ntool * num_tool), dtype=bool)
         state_mask[:obj_kp_num] = True # obj
         state_mask[max_nobj : max_nobj + tool_kp_num] = True # dynamic tool
         
         obj_mask = np.zeros((max_nobj,), dtype=bool)
         obj_mask[:obj_kp_num] = True
         
-        tool_mask = np.zeros((max_nobj + max_ntool * max_tool,), dtype=bool)
+        tool_mask = np.zeros((max_nobj + max_ntool * num_tool,), dtype=bool)
         tool_mask[max_nobj : max_nobj + tool_kp_num] = True # dynamic tool
         
         # construct instance information
-        p_rigid = np.zeros(max_n, dtype=np.float32)
-        p_instance = np.zeros((max_nobj, max_n), dtype=np.float32)
-        j_perm = np.random.permutation(instance_num)
+        p_rigid = np.zeros(num_obj, dtype=np.float32)
+        p_instance = np.zeros((max_nobj, num_obj), dtype=np.float32)
+        # j_perm = np.random.permutation(instance_num)
+        # ptcl_cnt = 0
+        # # sanity check
+        # assert sum([len(fps_idx_list[j]) for j in range(len(fps_idx_list))]) == obj_kp_num
+        # # fill in p_instance
+        # for j in range(instance_num):
+        #     p_instance[ptcl_cnt:ptcl_cnt + len(fps_idx_list[j_perm[j]]), j_perm[j]] = 1
+        #     ptcl_cnt += len(fps_idx_list[j_perm[j]])
         ptcl_cnt = 0
-        # sanity check
-        assert sum([len(fps_idx_list[j]) for j in range(len(fps_idx_list))]) == obj_kp_num
-        # fill in p_instance
         for j in range(instance_num):
-            p_instance[ptcl_cnt:ptcl_cnt + len(fps_idx_list[j_perm[j]]), j_perm[j]] = 1
-            ptcl_cnt += len(fps_idx_list[j_perm[j]])
-        
+            p_instance[ptcl_cnt:ptcl_cnt + len(fps_idx_list[j]), j] = 1
+            ptcl_cnt += len(fps_idx_list[j])
+
         # construct physics information
-        physics_param = self.physics_params[dataset_idx][episode_idx]  # dict
-        for material_name in dataset_config['materials']:
-            if material_name not in physics_param.keys():
-                raise ValueError(f'Physics parameter {material_name} not found in {dataset_config["data_dir"]}')
-            physics_param[material_name] += np.random.uniform(-phys_noise, phys_noise, 
-                    size=physics_param[material_name].shape)
+        # physics_param = self.physics_params[dataset_idx][episode_idx]  # dict
+        # for material_name in dataset_config['materials']:
+        #     if material_name not in physics_param.keys():
+        #         raise ValueError(f'Physics parameter {material_name} not found in {dataset_config["data_dir"]}')
+        #     physics_param[material_name] += np.random.uniform(-phys_noise, phys_noise, 
+        #             size=physics_param[material_name].shape)
         
         # new: construct physics information for each particle
-        material_idx = np.zeros((max_nobj, len(self.material_config['material_index'])), dtype=np.int32)
-        assert len(dataset_config['materials']) == 1, 'only support single material'
-        material_idx[:obj_kp_num, self.material_config['material_index'][dataset_config['materials'][0]]] = 1
+        # material_idx = np.zeros((max_nobj, len(self.material_config['material_index'])), dtype=np.int32)
+        # assert len(dataset_config['materials']) == 1, 'only support single material'
+        # material_idx[:obj_kp_num, self.material_config['material_index'][dataset_config['materials'][0]]] = 1
         
         # construct attributes
-        attr_dim = 2 # (obj, tool)
-        attrs = np.zeros((max_nobj + max_ntool * max_tool, attr_dim), dtype=np.float32)
+        attr_dim = 1 + num_tool # (obj, tool)
+        attrs = np.zeros((max_nobj + max_ntool * num_tool, attr_dim), dtype=np.float32)
         attrs[:obj_kp_num, 0] = 1.
         attrs[max_nobj : max_nobj + tool_kp_num, 1] = 1.
         
@@ -375,9 +359,13 @@ class DynDataset(Dataset):
         
         # TODO: rotation randomness
         random_rot = np.random.uniform(-np.pi, np.pi)
-        rot_mat = np.array([[np.cos(random_rot), -np.sin(random_rot), 0],
-                            [np.sin(random_rot), np.cos(random_rot), 0],
-                           [0, 0, 1]], dtype=state_history.dtype) # 2D rotation matrix in xy plane
+        if state_dim == 3:
+            rot_mat = np.array([[np.cos(random_rot), -np.sin(random_rot), 0],
+                                [np.sin(random_rot), np.cos(random_rot), 0],
+                            [0, 0, 1]], dtype=state_history.dtype) # 2D rotation matrix in xy plane
+        elif state_dim == 2:
+            rot_mat = np.array([[np.cos(random_rot), -np.sin(random_rot)],
+                                [np.sin(random_rot), np.cos(random_rot)]], dtype=state_history.dtype)
         state_history = state_history @ rot_mat[None]
         states_delta = states_delta @ rot_mat
         tool_future = tool_future @ rot_mat[None]
@@ -448,13 +436,10 @@ class DynDataset(Dataset):
             "pushing_direction": pushing_direction, # (3, )
         }
 
-        for material_name, material_dim in self.materials.items():
-            if material_name in physics_param.keys():
-                graph[material_name + '_physics_param'] = physics_param[material_name]
-            else:
-                graph[material_name + '_physics_param'] = torch.zeros(material_dim, dtype=torch.float32)
+        # for material_name, material_dim in self.materials.items():
+        #     if material_name in physics_param.keys():
+        #         graph[material_name + '_physics_param'] = physics_param[material_name]
+        #     else:
+        #         graph[material_name + '_physics_param'] = torch.zeros(material_dim, dtype=torch.float32)
 
         return graph
-
-
-

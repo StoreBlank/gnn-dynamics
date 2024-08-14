@@ -1,0 +1,74 @@
+train_config:
+  out_dir: "logs/merging_L"
+  phases: ["train", "valid"]
+  load_model: False
+  model_checkpoint: "/mnt/nvme1n1p1/baoyu/checkpoints/latest.pth"
+  optimizer_checkpoint: "/mnt/nvme1n1p1/baoyu/checkpoints/latest_optim.pth"
+  device: "cuda"
+  
+  batch_size: 128
+  n_epochs: 100
+  n_iters_per_epoch:
+    train: 1000
+    valid: 100
+  log_interval: 50
+  random_seed: 42
+  n_his: 4
+  n_future: 3
+
+model_config:
+  verbose: False
+
+  nf_particle: 150
+  nf_relation: 150
+  nf_effect: 150
+  out_dim: 2
+
+  nf_physics_hidden: 20
+  nf_physics: 10
+
+  # particle encoder
+  attr_dim: 2  # object and end effector
+  state_dim: 0  # x, y, z
+  offset_dim: 0
+  action_dim: 2
+  pstep: 3
+  sequence_length: 4
+  density_dim: 0  # particle density
+
+  # rel encoder
+  rel_particle_dim: 0
+  rel_attr_dim: 2
+  rel_group_dim: 1  # sum of difference of group one-hot vector
+  rel_distance_dim: 2
+  rel_density_dim: 0
+
+  # canonical
+  # rel_can_attr_dim: 0
+  # rel_canonical_distance_dim: 0
+  # rel_canonical_attr_dim: 0
+  # rel_canonical_thresh: 0
+
+  # phys encoding
+  use_vae: False
+  phys_encode: False
+
+dataset_config:
+  data_dir: "../data/merging_L"
+  prep_data_dir: "../data/preprocess/merging_L"
+  fps_radius_range: [13, 17]
+  adj_radius_range: [98, 102]
+  state_noise: 
+    train: 0.04
+    valid: 0.0
+  phys_noise: 
+    train: 0.0
+    valid: 0.0
+  ratio: 
+    train: [0, 0.9]
+    valid: [0.9, 1]
+  max_n: 2
+  max_tool: 1
+  max_nobj: 100
+  max_ntool: 5
+  max_nR: 1500

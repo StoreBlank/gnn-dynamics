@@ -179,7 +179,7 @@ def visualize_graph(data_dir, episode_idx, start, end, vis_t, save_dir,
 
 
 # component functions for rollout
-def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_config, all_particles_pos, all_tool_states):
+def construct_graph(dataset, n_his, pair, episode_idx, all_particles_pos, all_tool_states):
     max_n = dataset['max_n']
     max_tool = dataset['max_tool']
     max_nobj = dataset['max_nobj']
@@ -212,7 +212,7 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
     for j in range(len(obj_kp_start)):
         # farthest point sampling
         particle_tensor = torch.from_numpy(obj_kp_start[j]).float()[None, ...]
-        fps_idx_tensor = farthest_point_sampler(particle_tensor, max_nobj, start_idx=np.random.randint(0, obj_kp_start[j].shape[0]))[0]
+        fps_idx_tensor = farthest_point_sampler(particle_tensor, min(max_nobj, particle_tensor.shape[1]), start_idx=np.random.randint(0, obj_kp_start[j].shape[0]))[0]
         fps_idx_1 = fps_idx_tensor.numpy().astype(np.int32)
 
         # downsample to uniform radius
@@ -276,16 +276,16 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
         ptcl_cnt += len(fps_idx_list[j_perm[j]])
 
     # construct physics information
-    for material_name in dataset['materials']:
-        if material_name not in physics_param.keys():
-            raise ValueError(f'Physics parameter {material_name} not found in {dataset["data_dir"]}')
+    # for material_name in dataset['materials']:
+    #     if material_name not in physics_param.keys():
+    #         raise ValueError(f'Physics parameter {material_name} not found in {dataset["data_dir"]}')
         # physics_param[material_name] += np.random.uniform(-phys_noise, phys_noise, 
         #         size=physics_param[material_name].shape)
 
     # new: construct physics information for each particle
-    material_idx = np.zeros((max_nobj, len(material_config['material_index'])), dtype=np.int32)
-    assert len(dataset['materials']) == 1, 'only support single material'
-    material_idx[:obj_kp_num, material_config['material_index'][dataset['materials'][0]]] = 1
+    # material_idx = np.zeros((max_nobj, len(material_config['material_index'])), dtype=np.int32)
+    # assert len(dataset['materials']) == 1, 'only support single material'
+    # material_idx[:obj_kp_num, material_config['material_index'][dataset['materials'][0]]] = 1
 
     # construct attributes
     attr_dim = 2
@@ -299,8 +299,8 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
     attrs = torch.from_numpy(attrs).float()
     p_rigid = torch.from_numpy(p_rigid).float()
     p_instance = torch.from_numpy(p_instance).float()
-    physics_param = {k: torch.from_numpy(v).float() for k, v in physics_param.items()}
-    material_idx = torch.from_numpy(material_idx).long()
+    # physics_param = {k: torch.from_numpy(v).float() for k, v in physics_param.items()}
+    # material_idx = torch.from_numpy(material_idx).long()
     state_mask = torch.from_numpy(state_mask)
     tool_mask = torch.from_numpy(tool_mask)
     obj_mask = torch.from_numpy(obj_mask)
@@ -338,14 +338,14 @@ def construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_c
         "tool_mask": tool_mask,  # (N+M,)
         "obj_mask": obj_mask,  # (N,)
 
-        "material_index": material_idx,  # (N, num_materials)
+        # "material_index": material_idx,  # (N, num_materials)
 
         # for non-model use
         "tool_kp": tool_kp,  # (2, max_ntool * max_tool, 3)
     }
 
-    for material_name in physics_param.keys():
-        graph[material_name + '_physics_param'] = physics_param[material_name]
+    # for material_name in physics_param.keys():
+    #     graph[material_name + '_physics_param'] = physics_param[material_name]
 
     ### finish constructing graph ###
     return graph, fps_idx_list
@@ -394,7 +394,7 @@ def chamfer(x, y):
     return dis_xy + dis_yx
 
 
-def rollout_from_start_graph(graph, model, material_config, device, dataset, episode_idx, current_start, current_end, 
+def rollout_from_start_graph(graph, model, device, dataset, episode_idx, current_start, current_end, 
         get_next_pair_or_break_func, fps_idx_list, pairs, save_dir, all_particles_pos, all_tool_states):
 
     obj_mask = graph['obj_mask'].numpy()
@@ -408,7 +408,7 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
     max_nobj = dataset['max_nobj']
     max_ntool = dataset['max_ntool']
 
-    vis = False
+    vis = True
     if vis:
         Rr = graph['Rr'].numpy()
         Rs = graph['Rs'].numpy()
@@ -528,11 +528,11 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
                 "obj_mask": graph["obj_mask"],  # (N,)
                 "tool_mask": graph["tool_mask"],  # (N+M,)
                 "state_mask": graph["state_mask"],  # (N+M,)
-                "material_index": graph["material_index"],  # (N, num_materials)
+                # "material_index": graph["material_index"],  # (N, num_materials)
             }
-            for name in graph.keys():
-                if name.endswith('_physics_param'):
-                    new_graph[name] = graph[name]
+            # for name in graph.keys():
+            #     if name.endswith('_physics_param'):
+            #         new_graph[name] = graph[name]
             
             graph = new_graph
 
@@ -547,7 +547,7 @@ def rollout_from_start_graph(graph, model, material_config, device, dataset, epi
     return error_list, error_baseline_list
 
 
-def rollout_episode(model, device, dataset, material_config, pairs, episode_idx, physics_param, save_dir, all_particles_pos, all_tool_states, vis=False):
+def rollout_episode(model, device, dataset, pairs, episode_idx, save_dir, all_particles_pos, all_tool_states, vis=True):
     n_his = model.model_config['n_his']
 
     # state_noise = 0.0
@@ -559,9 +559,9 @@ def rollout_episode(model, device, dataset, material_config, pairs, episode_idx,
     start = pair[n_his-1]
     end = pair[n_his]
 
-    graph, fps_idx_list = construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_config, all_particles_pos, all_tool_states)
+    graph, fps_idx_list = construct_graph(dataset, n_his, pair, episode_idx, all_particles_pos, all_tool_states)
     
-    error_list, error_baseline_list = rollout_from_start_graph(graph, model, material_config, device, dataset, episode_idx, start, end, 
+    error_list, error_baseline_list = rollout_from_start_graph(graph, model, device, dataset, episode_idx, start, end, 
             get_next_pair_or_break_episode, fps_idx_list, pairs, save_dir, all_particles_pos, all_tool_states)
 
     # plot error
@@ -595,7 +595,7 @@ def rollout_episode(model, device, dataset, material_config, pairs, episode_idx,
     return error_list
 
 
-def rollout_episode_pushes(model, device, dataset, material_config, pairs, episode_idx, physics_param, save_dir, all_particles_pos, all_tool_states, vis=False):
+def rollout_episode_pushes(model, device, dataset, pairs, episode_idx, save_dir, all_particles_pos, all_tool_states, vis=True):
     n_his = model.model_config['n_his']
 
     # state_noise = 0.0
@@ -617,9 +617,9 @@ def rollout_episode_pushes(model, device, dataset, material_config, pairs, episo
         start = pair[n_his-1]
         end = pair[n_his]
 
-        graph, fps_idx_list = construct_graph(dataset, n_his, pair, episode_idx, physics_param, material_config, all_particles_pos, all_tool_states)
+        graph, fps_idx_list = construct_graph(dataset, n_his, pair, episode_idx, all_particles_pos, all_tool_states)
         
-        error_list, error_baseline_list = rollout_from_start_graph(graph, model, material_config, device, dataset, episode_idx, start, end, 
+        error_list, error_baseline_list = rollout_from_start_graph(graph, model, device, dataset, episode_idx, start, end, 
                 get_next_pair_or_break_episode_pushes, fps_idx_list, pairs, save_dir, all_particles_pos, all_tool_states)
         
         error_list_pushes.append(error_list)
@@ -655,9 +655,9 @@ def rollout_episode_pushes(model, device, dataset, material_config, pairs, episo
     return error_list_pushes
 
 
-def rollout_dataset(model, device, dataset, material_config, save_dir):
-    pair_lists, physics_params = load_dataset(dataset, material_config, phase='valid')
-    print(f'Loaded {len(pair_lists)} pairs from {dataset["name"]}')
+def rollout_dataset(model, device, dataset, save_dir):
+    pair_lists = load_dataset(dataset, phase='valid')
+    # print(f'Loaded {len(pair_lists)} pairs from {dataset["name"]}')
     
     # load all particles and tool states
     data_dir = dataset['data_dir']
@@ -676,21 +676,21 @@ def rollout_dataset(model, device, dataset, material_config, save_dir):
     episode_idx_list = sorted(list(np.unique(pair_lists[:, 0]).astype(int)))
     for episode_idx in episode_idx_list:
         pair_lists_episode = pair_lists[pair_lists[:, 0] == episode_idx][:, 1:]
-        physics_params_episode = physics_params[episode_idx]
+        # physics_params_episode = physics_params[episode_idx]
         
         save_dir_episode = os.path.join(save_dir, f"{episode_idx}", "long")
         os.makedirs(save_dir_episode, exist_ok=True)
-        error_list_long = rollout_episode(model, device, dataset, material_config, pair_lists_episode, episode_idx, 
-                    physics_params_episode, save_dir_episode, all_particles_pos, all_tool_states)
+        error_list_long = rollout_episode(model, device, dataset, pair_lists_episode, episode_idx, 
+                    save_dir_episode, all_particles_pos, all_tool_states)
         total_error_long.append(error_list_long)
         
         save_dir_episode_pushes = os.path.join(save_dir, f"{episode_idx}", "short")
         os.makedirs(save_dir_episode_pushes, exist_ok=True)
-        error_list_short = rollout_episode_pushes(model, device, dataset, material_config, pair_lists_episode, episode_idx,
-                    physics_params_episode, save_dir_episode_pushes, all_particles_pos, all_tool_states)
+        error_list_short = rollout_episode_pushes(model, device, dataset, pair_lists_episode, episode_idx,
+                    save_dir_episode_pushes, all_particles_pos, all_tool_states)
         total_error_short.extend(error_list_short)
 
-    
+
     for (total_error, save_name) in zip([total_error_long, total_error_short], ['error_long', 'error_short']):
         
         max_step = max([len(total_error[i]) for i in range(len(total_error))])
@@ -729,7 +729,6 @@ def rollout(args, config, out_dir_root):
     train_config = config['train_config']
     dataset_config = config['dataset_config']
     model_config = config['model_config']
-    material_config = config['material_config']
     
     epoch = args.epoch
 
@@ -748,7 +747,7 @@ def rollout(args, config, out_dir_root):
         checkpoint_dir = os.path.join(train_config['out_dir'], 'checkpoints', 'model_{}.pth'.format(epoch))
 
     model_config['n_his'] = train_config['n_his']
-    model = DynamicsPredictor(model_config, material_config, device)
+    model = DynamicsPredictor(model_config, device)
     model.to(device)
 
     mse_loss = torch.nn.MSELoss()
@@ -763,18 +762,15 @@ def rollout(args, config, out_dir_root):
     # line_alpha = 0.5
     # colormap = rgb_colormap(repeat=100)  # only red
 
-    assert len(dataset_config['datasets']) == 1, 'only support single dataset'
-
-    for i, dataset in enumerate(dataset_config['datasets']):
-        print(f'Rolling out on dataset {dataset["name"]} at {dataset["data_dir"]}')
-        save_dir_dataset = os.path.join(save_dir, dataset['name'])
-        os.makedirs(save_dir_dataset, exist_ok=True)
-        rollout_dataset(model, device, dataset, material_config, save_dir_dataset)
+    print(f'Rolling out at {dataset_config["data_dir"]}')
+    save_dir_dataset = os.path.join(save_dir)
+    os.makedirs(save_dir_dataset, exist_ok=True)
+    rollout_dataset(model, device, dataset_config, save_dir_dataset)
 
 
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument('--config', type=str, default='config/debug.yaml')
+    arg_parser.add_argument('--config', type=str, default='src/config/granular_0127.yaml')
     arg_parser.add_argument('--epoch', type=str, default=100)
     arg_parser.add_argument('--debug', type=bool, default=False)
     args = arg_parser.parse_args()
@@ -783,5 +779,5 @@ if __name__ == "__main__":
         config = yaml.load(f, Loader=yaml.CLoader)
 
     # out_dir_root = f"/mnt/nvme1n1p1/baoyu/vis"
-    out_dir_root = f"/mnt/sda/adaptigraph/vis"
+    out_dir_root = f"vis/granular"
     rollout(args, config, out_dir_root)

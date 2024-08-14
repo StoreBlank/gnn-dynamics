@@ -33,7 +33,7 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
     num_episodes = len(list(glob.glob(os.path.join(data_dir, f"episode_*"))))
     print(f"Preprocessing starts. Number of episodes: {num_episodes}")
     
-    phys_params = []
+    # phys_params = []
     
     for epi_idx in range(num_episodes):
         # load particle
@@ -55,21 +55,21 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
             eef_rot = quaternion_to_rotation_matrix(eef_quat)
             eef_pos[i] = eef_pos_0 + np.dot(eef_rot, np.array([0, 0, 1.25]))
         
-        physics_path = os.path.join(data_dir, f"episode_{epi_idx}/property_params.json")
-        with open(physics_path, "r") as f:
-            properties = json.load(f)
-        phys_param = np.array([
-            # properties['particle_radius'],
-            # properties['num_particles'],
-            properties['granular_scale'],
-            # properties['num_granular'],
-            # properties['distribution_r'],
-            # properties['dynamic_friction'],
-            # properties['granular_mass'],
-            # properties['area'],
-            # properties['sz_ratio'],
-        ]).astype(np.float32)
-        phys_params.append(phys_param)
+        # physics_path = os.path.join(data_dir, f"episode_{epi_idx}/property_params.json")
+        # with open(physics_path, "r") as f:
+        #     properties = json.load(f)
+        # phys_param = np.array([
+        #     # properties['particle_radius'],
+        #     # properties['num_particles'],
+        #     properties['granular_scale'],
+        #     # properties['num_granular'],
+        #     # properties['distribution_r'],
+        #     # properties['dynamic_friction'],
+        #     # properties['granular_mass'],
+        #     # properties['area'],
+        #     # properties['sz_ratio'],
+        # ]).astype(np.float32)
+        # phys_params.append(phys_param)
         
         # get start-end pairs
         frame_idxs = []
@@ -140,12 +140,12 @@ def extract_pushes(data_dir, save_dir, dist_thresh, n_his, n_future):
                 frame_idxs = []
     
     # save phys_params stat
-    phys_params = np.stack(phys_params, axis=0)
-    phys_params_max = np.max(phys_params, axis=0)
-    phys_params_min = np.min(phys_params, axis=0)
-    phys_params_range = np.stack([phys_params_min, phys_params_max], axis=0)
-    print(f"phys_params_range: {phys_params_range}")
-    np.savetxt(os.path.join(save_dir, "phys_range.txt"), phys_params_range)
+    # phys_params = np.stack(phys_params, axis=0)
+    # phys_params_max = np.max(phys_params, axis=0)
+    # phys_params_min = np.min(phys_params, axis=0)
+    # phys_params_range = np.stack([phys_params_min, phys_params_max], axis=0)
+    # print(f"phys_params_range: {phys_params_range}")
+    # np.savetxt(os.path.join(save_dir, "phys_range.txt"), phys_params_range)
     
 def extract_eef_points(data_dir):
     # calculate the number of episodes folder in the data directory
@@ -191,15 +191,14 @@ def extract_eef_points(data_dir):
         np.save(os.path.join(data_dir, f"episode_{epi_idx}/processed_eef_states.npy"), processed_eef_states)
 
 if __name__ == "__main__":
-    data_name = "data_simple/carrots_mixed_1"
     data_dir_list = [
         # f"/mnt/nvme1n1p1/baoyu/{data_name}"
         # f"/mnt/sda/data/granular/carrots"
-        "/mnt/sda/data_simple/carrots_mixed_1"
+        "../data/granular"
     ]
     save_dir_list = [
         # f"/mnt/nvme1n1p1/baoyu/preprocess_010/{data_name}"
-        f"/mnt/sda/adaptigraph/preprocess_010/granular_0414"
+        "../data/preprocess/granular"
     ]
     dist_thresh = 0.10 #(0.5cm, 1.0cm, 2.5cm)
     n_his = 4
